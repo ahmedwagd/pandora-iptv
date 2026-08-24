@@ -1,4 +1,4 @@
-import type { Channel, Season, Series, XtreamCreds } from "../types";
+import type { Channel, MovieDetail, Season, Series, XtreamCreds } from "../types";
 
 interface XtreamCategory {
   category_id: string;
@@ -27,6 +27,11 @@ interface XtreamSeriesEntry {
   name: string;
   cover: string | null;
   category_id: string;
+  plot?: string | null;
+  cast?: string | null;
+  genre?: string | null;
+  rating?: string | number | null;
+  releaseDate?: string | null;
 }
 
 interface XtreamEpisode {
@@ -44,8 +49,25 @@ interface XtreamSeason {
 }
 
 interface XtreamSeriesInfo {
+  info?: {
+    cover?: string | null;
+  };
   seasons?: XtreamSeason[];
   episodes?: Record<string, XtreamEpisode[]>;
+}
+
+interface XtreamVodInfo {
+  info?: {
+    movie_image?: string | null;
+    backdrop?: string | null;
+    plot?: string | null;
+    cast?: string | null;
+    genre?: string | null;
+    rating?: string | number | null;
+    releasedate?: string | null;
+    duration?: string | null;
+    backdrop_path?: string[] | null;
+  };
 }
 
 interface XtreamAccountInfo {
@@ -100,6 +122,18 @@ export function buildXtreamEpisodeUrl(
 
 function categoryNameMap(categories: XtreamCategory[]): Map<string, string> {
   return new Map(categories.map((c) => [c.category_id, c.category_name]));
+}
+
+function yearFromDate(date?: string | null): string | undefined {
+  if (!date) return undefined;
+  const m = date.match(/^(\d{4})/);
+  return m ? m[1] : undefined;
+}
+
+function ratingString(rating?: string | number | null): string | undefined {
+  if (rating == null) return undefined;
+  const n = Number(rating);
+  return Number.isFinite(n) ? n.toFixed(1) : undefined;
 }
 
 async function fetchJson<T>(fetchFn: FetchFn, url: string): Promise<T> {
@@ -175,7 +209,36 @@ export async function getXtreamSeries(
     name: s.name,
     cover: s.cover ?? undefined,
     group: nameByCat.get(s.category_id) ?? "Uncategorized",
+    plot: s.plot ?? undefined,
+    cast: s.cast ?? undefined,
+    genre: s.genre ?? undefined,
+    rating: ratingString(s.rating),
+    year: yearFromDate(s.releaseDate),
   }));
+}
+
+export async function getXtreamMovieDetail(
+  creds: XtreamCreds,
+  fetchFn: FetchFn,
+  streamId: string
+): Promise<MovieDetail> {
+  const data = await fetchJson<XtreamVodInfo>(
+    fetchFn,
+    buildApiUrl(creds, `get_vod_info&vod_id=${encodeURIComponent(streamId)}`)
+  );
+  const info = data.info ?? {};
+  const backdrop = info.backdrop || info.backdrop_path?.[0] || undefined;
+
+  return {
+    poster: info.movie_image ?? undefined,
+    backdrop,
+    plot: info.plot ?? undefined,
+    cast: info.cast ?? undefined,
+    genre: info.genre ?? undefined,
+    rating: ratingString(info.rating),
+    year: yearFromDate(info.releasedate),
+    duration: info.duration ?? undefined,
+  };
 }
 
 export async function getXtreamSeasons(
@@ -189,6 +252,7 @@ export async function getXtreamSeasons(
   );
 
   const episodesBySeason = info.episodes ?? {};
+  const cover = info.info?.cover ?? undefined;
   const seasons: Season[] = (info.seasons ?? []).map((s) => ({
     number: s.season_number,
     name: s.name || `Season ${s.season_number}`,
@@ -196,6 +260,7 @@ export async function getXtreamSeasons(
       id: `episode:${ep.id}`,
       name: ep.title || `S${ep.season} E${ep.episode_num}`,
       url: buildXtreamEpisodeUrl(creds, ep.id, ep.container_extension || "mkv"),
+      logo: cover,
       group: s.name || `Season ${s.season_number}`,
       kind: "episode" as const,
     })),

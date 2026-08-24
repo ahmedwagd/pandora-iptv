@@ -1,11 +1,13 @@
 import type { Channel } from "../types";
+import { MediaImage } from "./MediaImage";
 
 interface ChannelListProps {
   channels: Channel[];
   activeId: string | null;
   favoriteIds: Set<string>;
   onSelect: (channel: Channel) => void;
-  onToggleFavorite: (channel: Channel) => void;
+  onToggleFavorite: (id: string) => void;
+  showFavorite?: boolean;
 }
 
 export function ChannelList({
@@ -14,6 +16,7 @@ export function ChannelList({
   favoriteIds,
   onSelect,
   onToggleFavorite,
+  showFavorite = true,
 }: ChannelListProps) {
   if (channels.length === 0) {
     return <p className="channel-list-empty">No channels match your search.</p>;
@@ -27,22 +30,26 @@ export function ChannelList({
           className={`channel-row ${ch.id === activeId ? "active" : ""}`}
           onClick={() => onSelect(ch)}
         >
-          {ch.logo ? (
-            <img src={ch.logo} alt="" className="channel-logo" loading="lazy" />
-          ) : (
-            <div className="channel-logo channel-logo-placeholder">{ch.name[0]}</div>
-          )}
+          <MediaImage
+            src={ch.logo}
+            alt=""
+            className="channel-logo"
+            placeholderClassName="channel-logo-placeholder"
+            fallback={ch.name[0] ?? "?"}
+          />
           <span className="channel-name">{ch.name}</span>
-          <button
-            className={`favorite-btn ${favoriteIds.has(ch.id) ? "is-favorite" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFavorite(ch);
-            }}
-            aria-label="Toggle favorite"
-          >
-            ★
-          </button>
+          {showFavorite && (
+            <button
+              className={`favorite-btn ${favoriteIds.has(ch.id) ? "is-favorite" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleFavorite(ch.id);
+              }}
+              aria-label="Toggle favorite"
+            >
+              ★
+            </button>
+          )}
         </li>
       ))}
     </ul>

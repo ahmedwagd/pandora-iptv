@@ -5,11 +5,12 @@ import { readTextFile } from "@tauri-apps/plugin-fs";
 import { parseM3U } from "../lib/m3uParser";
 import {
   getXtreamLiveChannels,
+  getXtreamMovieDetail,
   getXtreamMovies,
   getXtreamSeasons,
   getXtreamSeries,
 } from "../lib/xtream";
-import type { Channel, Season, Series, XtreamCreds } from "../types";
+import type { Channel, MovieDetail, Season, Series, XtreamCreds } from "../types";
 
 // tauriFetch can reject with non-Error values (plain strings/objects), so
 // normalize whatever we get into something readable for the error banner.
@@ -32,6 +33,8 @@ export function usePlaylist() {
   const [series, setSeries] = useState<Series[]>([]);
   const [activeSeries, setActiveSeries] = useState<Series | null>(null);
   const [seasons, setSeasons] = useState<Season[]>([]);
+  const [movieDetail, setMovieDetail] = useState<MovieDetail | null>(null);
+  const [movieDetailLoading, setMovieDetailLoading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [moviesLoading, setMoviesLoading] = useState(false);
@@ -154,6 +157,20 @@ export function usePlaylist() {
     setSeasons([]);
   }, []);
 
+  const loadMovieDetail = useCallback(async (streamId: string) => {
+    const creds = credsRef.current;
+    if (!creds) return;
+    setMovieDetailLoading(true);
+    setMovieDetail(null);
+    try {
+      setMovieDetail(await getXtreamMovieDetail(creds, tauriFetch, streamId));
+    } catch (e) {
+      console.warn("Failed to load movie details:", toErrorString(e));
+    } finally {
+      setMovieDetailLoading(false);
+    }
+  }, []);
+
   const disconnect = useCallback(() => {
     setChannels([]);
     resetContent();
@@ -169,6 +186,8 @@ export function usePlaylist() {
     series,
     activeSeries,
     seasons,
+    movieDetail,
+    movieDetailLoading,
     loading,
     moviesLoading,
     seriesLoading,
@@ -181,6 +200,7 @@ export function usePlaylist() {
     loadFromXtream,
     openSeries,
     closeSeries,
+    loadMovieDetail,
     disconnect,
   };
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { load, Store } from "@tauri-apps/plugin-store";
-import type { Channel } from "../types";
 
 const STORE_FILE = "iptv-app-data.json";
 const FAVORITES_KEY = "favoriteIds";
@@ -12,29 +11,26 @@ function getStore() {
 }
 
 /**
- * Persists favorite channel ids to disk via Tauri's store plugin.
- * Deliberately not localStorage: Tauri webviews reset localStorage
- * more aggressively across some platforms, and a JSON file on disk
- * is easier for the user to find/back up.
+ * Persists favorite ids to disk via Tauri's store plugin.
+ * Ids are namespaced by content type ("movie:123", "series:123",
+ * "episode:123", or a raw live stream id) to avoid collisions.
  */
 export function useFavorites() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     (async () => {
       const store = await getStore();
       const saved = (await store.get<string[]>(FAVORITES_KEY)) ?? [];
       setFavoriteIds(new Set(saved));
-      setReady(true);
     })();
   }, []);
 
-  const toggleFavorite = useCallback((channel: Channel) => {
+  const toggle = useCallback((id: string) => {
     setFavoriteIds((prev) => {
       const next = new Set(prev);
-      if (next.has(channel.id)) next.delete(channel.id);
-      else next.add(channel.id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
 
       getStore().then((store) => {
         store.set(FAVORITES_KEY, Array.from(next));
@@ -44,5 +40,5 @@ export function useFavorites() {
     });
   }, []);
 
-  return { favoriteIds, toggleFavorite, ready };
+  return { favoriteIds, toggle };
 }

@@ -27,12 +27,37 @@ export interface Series {
   name: string;
   cover?: string;
   group: string; // category name
+  plot?: string;
+  cast?: string;
+  genre?: string;
+  rating?: string;
+  year?: string;
 }
 
 export interface Season {
   number: number;
   name: string;
   episodes: Channel[];
+}
+
+export interface MovieDetail {
+  poster?: string;
+  backdrop?: string;
+  plot?: string;
+  cast?: string;
+  genre?: string;
+  rating?: string;
+  year?: string;
+  duration?: string;
+}
+
+export interface WatchItem {
+  id: string;
+  name: string;
+  poster?: string;
+  kind: ContentKind;
+  url: string;
+  watchedAt: number;
 }
 
 export type ContentMode = "live" | "movie" | "series";
