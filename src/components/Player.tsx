@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { Channel } from "../types";
+import { ColorBar } from "./ColorBar";
 
 interface PlayerProps {
   channel: Channel | null;
@@ -77,7 +78,9 @@ export function Player({ channel }: PlayerProps) {
   if (!channel) {
     return (
       <div className="player-empty">
-        <p>Select a channel to start watching</p>
+        <ColorBar className="colorbar--dim" />
+        <p className="player-empty-title">No signal</p>
+        <p className="player-empty-hint">Select a channel to start watching.</p>
       </div>
     );
   }
