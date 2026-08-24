@@ -41,13 +41,19 @@ export function LoginPage({
     if (canConnect) onLoadXtream({ server, username, password });
   };
 
-  return (
+    return (
     <div className="login">
       <aside className="login-aside">
         <ColorBar className="colorbar--brand" />
-        <h1 className="login-wordmark">IPTV Player</h1>
+        <p className="login-eyebrow">Broadcast · Signal · Player</p>
+        <h1 className="login-wordmark">
+          IPTV
+          <br />
+          Player
+        </h1>
         <p className="login-tagline">
-          Sign in to watch live TV, movies, and series from your provider.
+          Television from your provider. <strong>Live, movies, series</strong> — one
+          signal, every screen. Connect via Xtream Codes or drop in an M3U.
         </p>
       </aside>
 

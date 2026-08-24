@@ -80,7 +80,7 @@ export function Player({ channel }: PlayerProps) {
       <div className="player-empty">
         <ColorBar className="colorbar--dim" />
         <p className="player-empty-title">No signal</p>
-        <p className="player-empty-hint">Select a channel to start watching.</p>
+        <p className="player-empty-hint">Select a channel from the guide.</p>
       </div>
     );
   }
@@ -88,8 +88,17 @@ export function Player({ channel }: PlayerProps) {
   return (
     <div className="player">
       <video ref={videoRef} controls autoPlay className="player-video" />
-      {loading && <div className="player-overlay">Loading {channel.name}…</div>}
-      {error && <div className="player-overlay player-error">{error}</div>}
+      {loading && (
+        <div className="player-overlay">
+          <span className="inline-loader" aria-hidden />
+          Tuning {channel.name}…
+        </div>
+      )}
+      {error && (
+        <div className="player-overlay player-error">
+          <span aria-hidden>⚠</span> {error}
+        </div>
+      )}
     </div>
   );
 }

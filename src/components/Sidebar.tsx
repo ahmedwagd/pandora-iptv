@@ -49,41 +49,60 @@ export function Sidebar({
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <span className="sidebar-brand">IPTV Player</span>
+        <div className="sidebar-brand-block">
+          <span className="sidebar-brand">IPTV Player</span>
+          <span className="sidebar-signal">
+            <span className="signal-dot" aria-hidden>
+              ●
+            </span>{" "}
+            {filtered.length} on air · {groups.length - 1} groups
+          </span>
+        </div>
         <div className="sidebar-actions">
           <button className="change-source" onClick={onHome} title="Back to dashboard">
             Home
           </button>
           <button className="change-source" onClick={onDisconnect} title="Change source">
-            Change source
+            Exit
           </button>
         </div>
       </div>
 
       <div className="filters">
-        <input
-          type="text"
-          placeholder="Search…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select value={group} onChange={(e) => setGroup(e.target.value)}>
-          {groups.map((g) => (
-            <option key={g} value={g}>
-              {g}
-            </option>
-          ))}
-        </select>
-        <button
-          className={`favorites-toggle ${showFavoritesOnly ? "active" : ""}`}
-          onClick={onToggleShowFavorites}
-        >
-          ★ Favorites
-        </button>
+        <div className="filter-row">
+          <input
+            type="text"
+            placeholder="Search channels…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search channels"
+          />
+          <button
+            className={`favorites-toggle ${showFavoritesOnly ? "active" : ""}`}
+            onClick={onToggleShowFavorites}
+            aria-pressed={showFavoritesOnly}
+            title={showFavoritesOnly ? "Show all channels" : "Show favorites only"}
+          >
+            ★
+          </button>
+        </div>
+        <div className="filter-row filter-row--meta">
+          <select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Filter by group">
+            {groups.map((g) => (
+              <option key={g} value={g}>
+                {g}
+              </option>
+            ))}
+          </select>
+          <span className="filter-count">{filtered.length} channels</span>
+        </div>
       </div>
 
       {loading ? (
-        <p className="channel-list-empty">Loading playlist…</p>
+        <div className="channel-list-empty">
+          <div className="colorbar colorbar--loading" style={{ height: 2, marginBottom: 12 }} aria-hidden />
+          <span> Tuning signal…</span>
+        </div>
       ) : (
         <ChannelList
           channels={filtered}

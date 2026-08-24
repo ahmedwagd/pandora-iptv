@@ -1,67 +1,133 @@
+/* ============================================================
+   SIGNAL — Premium IPTV Design System
+   Surface: layered green-black · Primary #2EE6A8 phosphor
+   SMPTE strip is the single signature. Tonal layering, no shadow.
+   ============================================================ */
 :root {
-  --screen: #0a0c0f;
-  --panel: #14171d;
-  --panel-2: #1b1f27;
-  --edge: #272d38;
-  --ink: #eceef1;
-  --dim: #8c939f;
-  --signal: #2ee6a8;
+  /* — Surfaces (tonal layering over canvas) — */
+  --surface: #0d1511;
+  --surface-dim: #0d1511;
+  --surface-bright: #333b36;
+  --surface-lowest: #08100c;
+  --surface-low: #151d19;
+  --surface-container: #19211d;
+  --surface-high: #242c27;
+  --surface-highest: #2e3732;
+  --surface-variant: #2e3732;
+  --background: #0d1511;
+
+  /* — Legacy aliases (keep App.tsx/CSS compat) — */
+  --screen: var(--surface);
+  --panel: var(--surface-low);
+  --panel-2: var(--surface-container);
+  --raised: var(--surface-high);
+  --edge: #3b4a42;            /* outline-variant */
+  --hairline: rgba(59, 74, 66, 0.7);
+  --outline: #85948b;
+  --outline-variant: #3b4a42;
+
+  /* — Foreground — */
+  --on-surface: #dce5dd;
+  --on-surface-variant: #bacac0;
+  --on-background: #dce5dd;
+  --inverse-surface: #dce5dd;
+  --inverse-on-surface: #2a322d;
+  --ink: var(--on-surface);
+  --muted: var(--on-surface-variant);
+  --dim: var(--on-surface-variant);
+
+  /* — Accent — */
+  --primary: #80ffc9;
+  --on-primary: #003826;
+  --primary-container: #2ee6a8;
+  --on-primary-container: #006245;
+  --primary-fixed: #52febe;
+  --primary-fixed-dim: #23e1a3;
+  --signal: #2ee6a8;          /* phosphor green — primary actions only */
   --signal-deep: #1c9a72;
-  --danger: #e5484d;
+  --signal-glow: rgba(46, 230, 168, 0.24);
+  --surface-tint: #23e1a3;
 
+  --secondary: #98d3b5;
+  --secondary-container: #17533c;
+  --tertiary: #ffe4bf;
+  --tertiary-container: #ffc158;
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+  --danger: #ffb4ab;
+
+  /* — Typefaces — */
   --font-display: "Space Grotesk Variable", "Space Grotesk", sans-serif;
-  --font-body: "Archivo Variable", "Archivo", sans-serif;
+  --font-body: "Archivo Narrow", "Archivo Variable", "Archivo", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+
+  /* — Type scale — */
+  --text-display-xl: 72px;
+  --text-headline-lg: 40px;
+  --text-headline-mobile: 32px;
+  --text-title-md: 24px;
+  --text-body-lg: 18px;
+  --text-body-md: 16px;
+  --text-meta: 14px;
+  --text-channel: 20px;
+
+  /* — Spacing (4px unit) — */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+  --gutter: 24px;
+  --margin-safe: 48px;
+
+  /* — Radius (Soft-Tech) — */
+  --radius-sm: 0.25rem;
+  --radius: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-full: 9999px;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
 
 body {
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: var(--text-body-md);
   line-height: 1.5;
-  background: var(--screen);
-  color: var(--ink);
+  background: var(--background);
+  color: var(--on-surface);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
 }
 
-button {
-  font-family: inherit;
-  cursor: pointer;
-}
+::selection { background: rgba(46, 230, 168, 0.20); }
 
-input,
-select {
-  font-family: inherit;
-}
-
-::selection {
-  background: rgba(46, 230, 168, 0.25);
-}
+button { font-family: inherit; cursor: pointer; }
+input, select { font-family: inherit; }
 
 :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
-  border-radius: 3px;
+  border-radius: 2px;
+}
+button:focus-visible, input:focus-visible, select:focus-visible {
+  box-shadow: 0 0 0 4px var(--signal-glow);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Subtle scrollbars — tonal, not chrome */
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { background: #2e3732; border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }

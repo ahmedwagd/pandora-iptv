@@ -1,4 +1,5 @@
 import type { Channel } from "../types";
+import { ColorBar } from "./ColorBar";
 import { MediaImage } from "./MediaImage";
 
 interface ChannelListProps {
@@ -19,17 +20,25 @@ export function ChannelList({
   showFavorite = true,
 }: ChannelListProps) {
   if (channels.length === 0) {
-    return <p className="channel-list-empty">No channels match your search.</p>;
+    return (
+      <div className="channel-list-empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <ColorBar className="colorbar--dim" />
+        <span>No channels match your search.</span>
+      </div>
+    );
   }
 
   return (
     <ul className="channel-list">
-      {channels.map((ch) => (
+      {channels.map((ch, idx) => (
         <li
           key={ch.id}
           className={`channel-row ${ch.id === activeId ? "active" : ""}`}
           onClick={() => onSelect(ch)}
         >
+          <span className="channel-num" aria-hidden>
+            {String(idx + 1).padStart(2, "0")}
+          </span>
           <MediaImage
             src={ch.logo}
             alt=""

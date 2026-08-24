@@ -25,51 +25,61 @@ export function FilterSidebar({
   onHome,
   onDisconnect,
 }: FilterSidebarProps) {
-  const smart = (f: SmartFilter) => (
+  const smart = (f: SmartFilter, label: string) => (
     <button
       key={f}
       className={`smart-filter ${smartFilter === f ? "active" : ""}`}
       onClick={() => onSmartFilter(f)}
     >
-      {f === "all" ? "All" : f === "favorites" ? "Favorites" : "Continue watching"}
+      {label}
     </button>
   );
 
   return (
     <aside className="filter-sidebar">
       <div className="sidebar-header">
-        <span className="sidebar-brand">IPTV Player</span>
+        <div className="sidebar-brand-block">
+          <span className="sidebar-brand">IPTV Player</span>
+          <span className="sidebar-signal">
+            <span className="signal-dot" aria-hidden>
+              ●
+            </span>{" "}
+            {categories.length} groups
+          </span>
+        </div>
         <div className="sidebar-actions">
           <button className="change-source" onClick={onHome}>
             Home
           </button>
           <button className="change-source" onClick={onDisconnect}>
-            Change source
+            Exit
           </button>
         </div>
       </div>
 
       <div className="smart-filters">
-        {smart("all")}
-        {showFavorites && smart("favorites")}
-        {smart("continue")}
+        {smart("all", "All")}
+        {showFavorites && smart("favorites", "Favorites")}
+        {smart("continue", "Continue")}
       </div>
 
       <div className="filter-search">
         <input
           type="text"
-          placeholder="Search…"
+          placeholder="Search titles…"
           value={search}
           onChange={(e) => onSearch(e.target.value)}
+          aria-label="Search titles"
         />
       </div>
 
       <nav className="filter-categories">
+        <div className="filter-categories-label">Categories</div>
         <button
           className={`filter-category ${category === null ? "active" : ""}`}
           onClick={() => onCategory(null)}
         >
-          All categories
+          All
         </button>
         {categories.map((c) => (
           <button

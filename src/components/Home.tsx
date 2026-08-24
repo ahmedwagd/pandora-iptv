@@ -68,22 +68,38 @@ const TILES: {
 
 export function Home(props: HomeProps) {
   const { sourceLabel, onSelect, onDisconnect } = props;
+  const total = props.liveCount + props.movieCount + props.seriesCount;
 
   return (
     <div className="home">
       <header className="home-header">
-        <div>
-          <h1 className="home-title">Library</h1>
+        <div className="home-header-block">
+          <div className="home-header-top">
+            <h1 className="home-title">Library</h1>
+            <span className="home-signal">
+              <span className="signal-dot" aria-hidden>
+                ●
+              </span>{" "}
+              {total.toLocaleString()} titles · {props.liveCount} on air
+            </span>
+          </div>
           {sourceLabel && <p className="home-subtitle">{sourceLabel}</p>}
         </div>
         <button className="home-logout" onClick={onDisconnect}>
-          Change source
+          Exit
         </button>
       </header>
 
       <div className="home-grid">
-        {TILES.map((t) => (
-          <button key={t.mode} className="home-tile" onClick={() => onSelect(t.mode)}>
+        {TILES.map((t, idx) => (
+          <button
+            key={t.mode}
+            className="home-tile"
+            data-ch={`CH 0${idx + 1}`}
+            data-num={`0${idx + 1}`}
+            onClick={() => onSelect(t.mode)}
+            aria-label={`${t.label} — ${countText(t.count(props), t.loading(props))} ${t.unit}`}
+          >
             <div className="home-tile-icon">{t.icon}</div>
             <div className="home-tile-label">{t.label}</div>
             <div className="home-tile-count">

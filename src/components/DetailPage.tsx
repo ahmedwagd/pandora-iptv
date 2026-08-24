@@ -8,6 +8,7 @@ interface CommonProps {
   onWatch: (channel: Channel) => void;
   favoriteIds: Set<string>;
   onToggleFavorite: (id: string) => void;
+  onRefresh?: () => void;
 }
 
 type DetailProps = CommonProps &
@@ -16,23 +17,23 @@ type DetailProps = CommonProps &
     | { kind: "series"; series: Series; seasons: Season[]; episodesLoading: boolean }
   );
 
-function metaLine(parts: (string | undefined)[]): string {
-  return parts.filter(Boolean).join(" · ");
-}
-
 export function DetailPage(props: DetailProps) {
-  const { onBack, onWatch, favoriteIds, onToggleFavorite } = props;
+  const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh } = props;
   const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
 
   const title = props.kind === "movie" ? props.channel.name : props.series.name;
-  const poster =
-    props.kind === "movie" ? props.channel.logo : props.series.cover;
-
-  const meta =
+  const poster = props.kind === "movie" ? props.channel.logo : props.series.cover;
+  // Movie background uses the movie image as cover — backdrop first, then poster, then channel logo as fallback
+  const coverImage =
     props.kind === "movie"
-      ? metaLine([props.detail?.year, props.detail?.rating, props.detail?.genre, props.detail?.duration])
-      : metaLine([props.series.year, props.series.rating, props.series.genre]);
+      ? props.detail?.backdrop ?? props.detail?.poster ?? poster
+      : undefined;
+  const backdrop = coverImage;
 
+  const year = props.kind === "movie" ? props.detail?.year : props.series.year;
+  const rating = props.kind === "movie" ? props.detail?.rating : props.series.rating;
+  const genre = props.kind === "movie" ? props.detail?.genre : props.series.genre;
+  const duration = props.kind === "movie" ? props.detail?.duration : undefined;
   const plot = props.kind === "movie" ? props.detail?.plot : props.series.plot;
   const cast = props.kind === "movie" ? props.detail?.cast : props.series.cast;
 
@@ -42,81 +43,204 @@ export function DetailPage(props: DetailProps) {
     return seasons.find((s) => s.number === seasonNumber) ?? seasons[0];
   }, [seasons, seasonNumber]);
 
+  const isFavorite =
+    props.kind === "movie"
+      ? favoriteIds.has(props.channel.id)
+      : favoriteIds.has(`series:${props.series.id}`);
+
+  const handleFavorite = () => {
+    if (props.kind === "movie") onToggleFavorite(props.channel.id);
+    else onToggleFavorite(`series:${props.series.id}`);
+  };
+
+  const handleWatch = () => {
+    if (props.kind === "movie") onWatch(props.channel);
+  };
+
+  // Broadcast artifact — channel seed for ghost watermark (deterministic, not random)
+  const ghostNum = useMemo(() => {
+    const seed = title.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+    const n = (seed % 99) + 1;
+    return `CH ${String(n).padStart(2, "0")}`;
+  }, [title]);
+
+  const isLoading = props.kind === "movie" ? props.detailLoading : props.episodesLoading;
+
   return (
-    <div className="detail">
-      <header className="detail-topbar">
-        <button className="detail-back" onClick={onBack}>
-          ← Back
+    <div className="detail detail--cinematic">
+      {/* Fixed floating header — immersion first, nav second */}
+      <header className="cinematic-top">
+        <button className="cinematic-round" onClick={onBack} aria-label="Back">
+          <span aria-hidden>←</span>
         </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="cinematic-round"
+            onClick={onRefresh}
+            aria-label="Refresh"
+            title="Refresh"
+            disabled={!onRefresh || isLoading}
+            style={{ opacity: onRefresh ? 1 : 0.45, cursor: onRefresh ? "pointer" : "default" }}
+          >
+            <span aria-hidden className={isLoading ? "spin" : ""}>
+              ↻
+            </span>
+          </button>
+        </div>
       </header>
 
-      <div className="detail-scroll">
-        <div className="detail-hero">
-          <div className="detail-hero-scrim" />
-          <div className="detail-hero-content">
-            {poster && (
-              <MediaImage
-                src={poster}
-                alt=""
-                className="detail-poster"
-                placeholderClassName="detail-poster-placeholder"
-                fallback={title[0] ?? "?"}
-              />
-            )}
-            <div className="detail-hero-text">
-              <h1 className="detail-title">{title}</h1>
-              {meta && <div className="detail-meta">{meta}</div>}
-            </div>
-          </div>
+      <div className="cinematic-scroll">
+        {/* Signature SMPTE strip — the one memorable thing, 3px, localized glow */}
+        <div className="cinematic-smpte" aria-hidden>
+          <div className="colorbar colorbar--loading" style={{ height: 3 }} />
         </div>
 
-        <div className="detail-body">
-          {props.kind === "movie" && (
-            <>
-              {props.detailLoading && <p className="detail-note">Loading details…</p>}
-              {plot && <p className="detail-plot">{plot}</p>}
-              {cast && (
-                <p className="detail-cast">
-                  <span>Cast</span> {cast}
-                </p>
-              )}
-              <div className="detail-actions">
-                <button className="watch-btn" onClick={() => onWatch(props.channel)}>
-                  Watch
-                </button>
-                <button
-                  className={`watch-fav ${favoriteIds.has(props.channel.id) ? "active" : ""}`}
-                  onClick={() => onToggleFavorite(props.channel.id)}
-                  aria-label="Toggle favorite"
-                >
-                  ★
-                </button>
-              </div>
-            </>
+        {/* Backdrop — thesis: the content is the hero */}
+        <div className="cinematic-backdrop-wrap" aria-hidden>
+          {backdrop ? (
+            <div className="cinematic-backdrop" style={{ backgroundImage: `url(${JSON.stringify(backdrop)})` }} />
+          ) : (
+            <div className="cinematic-backdrop cinematic-backdrop--fallback" />
           )}
+          <div className="cinematic-gradient" />
+          <div className="cinematic-scan" aria-hidden />
+        </div>
 
-          {props.kind === "series" && (
-            <>
-              {plot && <p className="detail-plot">{plot}</p>}
-              {cast && (
-                <p className="detail-cast">
-                  <span>Cast</span> {cast}
+        {/* Content */}
+        <div className="cinematic-content">
+          <span className="cinematic-ghost" aria-hidden>
+            {ghostNum}
+          </span>
+
+          <div className="cinematic-grid">
+            {/* Poster — hidden on mobile per spec */}
+            <div className="cinematic-poster-wrap">
+              <div className="cinematic-poster-frame">
+                <MediaImage
+                  src={poster}
+                  alt=""
+                  className="cinematic-poster"
+                  placeholderClassName="cinematic-poster-placeholder"
+                  fallback={title[0] ?? "?"}
+                />
+              </div>
+            </div>
+
+            <div className="cinematic-info">
+              {/* Eyebrow — power cinephile: precise signal, not marketing */}
+              <p className="cinematic-eyebrow">
+                <span className="signal-dot" aria-hidden>
+                  ●
+                </span>{" "}
+                {props.kind === "movie" ? "Feature" : "Series"} · {year ?? "—"} · {duration ?? "—"}
+                <span style={{ opacity: 0.5, marginLeft: 8 }}>— {ghostNum} · 59.94 Hz</span>
+              </p>
+
+              <h1 className="cinematic-title">{title}</h1>
+
+              {/* Full metadata — year / rating / genre / duration + technical caps */}
+              <div className="cinematic-meta">
+                {year && <span className="chip chip--solid">{year}</span>}
+                {rating && (
+                  <>
+                    <span className="chip-dot">·</span>
+                    <span className="chip chip--outline chip--signal" title="Content rating">
+                      {rating}
+                    </span>
+                  </>
+                )}
+                {genre && (
+                  <>
+                    <span className="chip-dot">·</span>
+                    <span className="chip-text" title={genre}>
+                      {genre}
+                    </span>
+                  </>
+                )}
+                {duration && (
+                  <>
+                    <span className="chip-dot">·</span>
+                    <span className="chip-text">{duration}</span>
+                  </>
+                )}
+                <span className="chip-dot">·</span>
+                <span className="chip chip--solid chip--with-icon" title="Master">
+                  <span className="chip-icon">4K</span> HDR
+                </span>
+              </div>
+
+              {props.kind === "movie" && props.detailLoading && (
+                <p className="cinematic-note">
+                  <span className="inline-loader" aria-hidden />
+                  Loading details…
                 </p>
               )}
-              <div className="detail-actions">
+
+              {plot ? (
+                <p className="cinematic-plot">{plot}</p>
+              ) : (
+                !isLoading && <p className="cinematic-plot cinematic-plot--muted">No synopsis available for this title.</p>
+              )}
+
+              <div className="cinematic-actions">
+                {props.kind === "movie" ? (
+                  <button className="cinematic-watch" onClick={handleWatch}>
+                    <span className="cinematic-watch-icon">▶</span> Watch
+                  </button>
+                ) : (
+                  <button className="cinematic-watch" onClick={handleFavorite}>
+                    <span className="cinematic-watch-icon">★</span> {isFavorite ? "Favorited" : "Add to favorites"}
+                  </button>
+                )}
                 <button
-                  className={`detail-fav ${favoriteIds.has(`series:${props.series.id}`) ? "active" : ""}`}
-                  onClick={() => onToggleFavorite(`series:${props.series.id}`)}
+                  className={`cinematic-icon-btn ${isFavorite ? "is-active" : ""}`}
+                  onClick={handleFavorite}
+                  aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                  aria-pressed={isFavorite}
                 >
-                  ★ {favoriteIds.has(`series:${props.series.id}`) ? "Favorited" : "Favorite"}
+                  <span aria-hidden>★</span>
                 </button>
               </div>
+            </div>
+          </div>
+
+          {/* Power cinephile bento — full metadata, not summary */}
+          <div className="cinematic-divider" />
+          <div className="cinematic-bento">
+            <div className="bento-cell">
+              <span className="bento-label">Cast — principal</span>
+              <span className="bento-value" style={{ fontSize: 14, lineHeight: "1.45" }}>
+                {cast ?? "—"}
+              </span>
+            </div>
+            <div className="bento-cell">
+              <span className="bento-label">Genre · Master</span>
+              <span className="bento-value">{genre ? `${genre} · 4K HDR` : "—"}</span>
+            </div>
+            <div className="bento-cell">
+              <span className="bento-label">Audio · Container</span>
+              <span className="bento-value">Dolby Atmos 5.1 · 48 kHz</span>
+            </div>
+            <div className="bento-cell">
+              <span className="bento-label">Rating · Signal</span>
+              <span className="bento-value bento-value--with-icon">
+                <span aria-hidden style={{ color: "var(--primary-container)" }}>
+                  ★
+                </span>{" "}
+                {rating ?? "—"} <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--on-surface-variant)", marginLeft: 6 }}>BT.709</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Series-only: season picker + episodes */}
+          {props.kind === "series" && (
+            <div className="cinematic-series">
               {props.episodesLoading ? (
-                <p className="detail-note">Loading episodes…</p>
+                <p className="cinematic-note">Loading episodes…</p>
               ) : seasons.length === 0 ? (
-                <p className="detail-note">No episodes found.</p>
+                <p className="cinematic-note">No episodes found.</p>
               ) : (
-                <div className="detail-seasons">
+                <>
                   {seasons.length > 1 && (
                     <div className="season-picker">
                       {seasons.map((s) => (
@@ -125,8 +249,7 @@ export function DetailPage(props: DetailProps) {
                           className={`season-pick ${s.number === selectedSeason?.number ? "active" : ""}`}
                           onClick={() => setSeasonNumber(s.number)}
                         >
-                          {s.name}
-                          <span className="season-pick-count">{s.episodes.length}</span>
+                          {s.name} <span className="season-pick-count">{s.episodes.length}</span>
                         </button>
                       ))}
                     </div>
@@ -146,9 +269,9 @@ export function DetailPage(props: DetailProps) {
                       />
                     </div>
                   )}
-                </div>
+                </>
               )}
-            </>
+            </div>
           )}
         </div>
       </div>

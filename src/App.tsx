@@ -265,6 +265,7 @@ export default function App() {
         onWatch={watch}
         favoriteIds={favoriteIds}
         onToggleFavorite={toggle}
+        onRefresh={() => loadMovieDetail(detailTarget.channel.id.replace(/^movie:/, ""))}
       />
     ) : (
       <DetailPage
@@ -276,6 +277,7 @@ export default function App() {
         onWatch={watch}
         favoriteIds={favoriteIds}
         onToggleFavorite={toggle}
+        onRefresh={() => openSeries(detailTarget.series)}
       />
     );
   }
@@ -334,9 +336,9 @@ export default function App() {
           onOpen={handleOpenPoster}
           emptyText={
             smartFilter === "favorites"
-              ? "No favorites here yet — tap ★ on a movie to keep it."
+              ? "No favorites yet — tap ★ to keep it here."
               : smartFilter === "continue"
-                ? "Nothing watched yet. Open something and it will show up here."
+                ? "Nothing watched yet — open something and it will show up here."
                 : "Nothing here yet."
           }
         />

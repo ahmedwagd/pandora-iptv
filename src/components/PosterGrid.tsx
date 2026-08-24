@@ -1,3 +1,4 @@
+import { ColorBar } from "./ColorBar";
 import { MediaImage } from "./MediaImage";
 
 export interface PosterCard {
@@ -14,7 +15,12 @@ interface PosterGridProps {
 
 export function PosterGrid({ items, onOpen, emptyText }: PosterGridProps) {
   if (items.length === 0) {
-    return <p className="poster-grid-empty">{emptyText ?? "Nothing here yet."}</p>;
+    return (
+      <div className="poster-grid-empty">
+        <ColorBar className="colorbar--dim" />
+        <p>{emptyText ?? "Nothing here yet."}</p>
+      </div>
+    );
   }
 
   return (
