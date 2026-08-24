@@ -1,0 +1,79 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.remote.example
+
+# Build output
+dist/
+build/
+target/
+out/
+
+# Vite
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/Frameworks/
+src-tauri/plugins/
+src-tauri/gen/schemas/
+
+# Rust
+**/*.rs.bk
+
+# TypeScript
+*.tsbuildinfo
+
+# Testing
+coverage/
+testResults.xml
+TestResults/
+*.trx
+*.test-results.xml
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Backup
+backups/
+*.dump
+*.sql.dump
+*.sql.bak
+*.sha256
+
+# Protected identities (operators replace with real values)
+scripts/protected-identities.production.json
+
+# Misc
+*.cache
+*.tmp
+*.temp
+
+/.opencode
+/.specify
