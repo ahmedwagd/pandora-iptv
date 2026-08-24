@@ -7,6 +7,8 @@ import "@fontsource-variable/jetbrains-mono";
 import App from "./App";
 import "./index.css";
 
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <App />
