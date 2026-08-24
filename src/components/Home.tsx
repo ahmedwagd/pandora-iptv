@@ -23,6 +23,8 @@ const TILES: {
   unit: string;
   count: (p: HomeProps) => number;
   loading: (p: HomeProps) => boolean;
+  bg: string;
+  accent: string;
   icon: React.ReactNode;
 }[] = [
   {
@@ -31,6 +33,8 @@ const TILES: {
     unit: "channels",
     count: (p) => p.liveCount,
     loading: () => false,
+    bg: "linear-gradient(165deg, #123b2c 0%, #0d1511 72%)",
+    accent: "#2ee6a8",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="2" y="6" width="20" height="13" rx="2" />
@@ -44,6 +48,8 @@ const TILES: {
     unit: "titles",
     count: (p) => p.movieCount,
     loading: (p) => p.moviesLoading,
+    bg: "linear-gradient(165deg, #0f2e2a 0%, #0d1511 72%)",
+    accent: "#98d3b5",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -57,6 +63,8 @@ const TILES: {
     unit: "shows",
     count: (p) => p.seriesCount,
     loading: (p) => p.seriesLoading,
+    bg: "linear-gradient(165deg, #332815 0%, #0d1511 72%)",
+    accent: "#ffc158",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <polygon points="12 3 22 9 12 15 2 9 12 3" />
@@ -95,6 +103,7 @@ export function Home(props: HomeProps) {
           <button
             key={t.mode}
             className="home-tile"
+            style={{ "--tile-bg": t.bg, "--tile-accent": t.accent } as React.CSSProperties}
             data-ch={`CH 0${idx + 1}`}
             data-num={`0${idx + 1}`}
             onClick={() => onSelect(t.mode)}

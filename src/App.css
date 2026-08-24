@@ -166,13 +166,13 @@
 .home-tile {
   position: relative; min-height: 268px; display: flex; flex-direction: column;
   align-items: flex-start; justify-content: flex-end; padding: 28px 28px 26px; text-align: left;
-  /* Tonal layering: panel over canvas — no shadow until hover glow */
-  background: var(--surface-low); border: 1px solid var(--outline-variant); border-radius: var(--radius-xl);
+  /* Per-tile tinted background (Live=phosphor, Movies=teal, Series=amber) over the tonal base */
+  background: var(--tile-bg, var(--surface-low)); border: 1px solid var(--outline-variant); border-radius: var(--radius-xl);
   color: var(--on-surface); overflow: hidden;
   transition: transform 0.16s ease, border-color 0.16s ease;
 }
-.home-tile:hover { transform: translateY(-3px) scale(1.01); border-color: var(--signal); }
-.home-tile:focus-visible { border-color: var(--signal); box-shadow: 0 0 0 3px var(--signal-glow); }
+.home-tile:hover { transform: translateY(-3px) scale(1.01); border-color: var(--tile-accent, var(--signal)); }
+.home-tile:focus-visible { border-color: var(--tile-accent, var(--signal)); box-shadow: 0 0 0 3px var(--signal-glow); }
 .home-tile::before {
   content: attr(data-ch);
   position: absolute; top: 18px; right: 18px;
@@ -184,7 +184,7 @@
   font-family: var(--font-display); font-weight: 700; font-size: 88px; line-height: 1; color: rgba(220,229,221,0.04); pointer-events: none;
 }
 .home-tile-icon { margin-bottom: auto; color: var(--on-surface-variant); transition: color 0.16s ease; }
-.home-tile:hover .home-tile-icon { color: var(--signal); }
+.home-tile:hover .home-tile-icon { color: var(--tile-accent, var(--signal)); }
 .home-tile-icon svg { width: 32px; height: 32px; }
 .home-tile-label { font-family: var(--font-display); font-weight: 600; font-size: var(--text-title-md); letter-spacing: -0.01em; line-height: 1.1; }
 .home-tile-count { margin-top: 8px; font-family: var(--font-mono); font-size: var(--text-meta); font-weight: 500; letter-spacing: 0.02em; color: var(--on-surface-variant); }
@@ -273,8 +273,10 @@
 .season-title::before {
   content: "●"; color: var(--signal); font-size: 6px; text-shadow: 0 0 6px var(--signal);
 }
-.season-block .channel-list { padding: 6px; background: transparent; gap: 2px; }
+.season-block .channel-panel { flex: none; }
+.season-block .channel-list { padding: 6px; background: transparent; gap: 2px; flex: none; overflow-y: visible; max-height: none; }
 .season-block .channel-list-empty { background: transparent; }
+.season-block .filters { border-top: 1px solid var(--outline-variant); }
 .season-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
 .season-pick {
   display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
@@ -285,6 +287,9 @@
 .season-pick:hover { color: var(--on-surface); border-color: var(--outline); }
 .season-pick.active { color: var(--surface); background: var(--primary-container); border-color: var(--primary-container); }
 .season-pick-count { font-family: var(--font-mono); font-size: 10px; opacity: 0.72; }
+
+/* — Channel panel: sidebar-style filter toolbar + EPG rows — */
+.channel-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 /* — Channel rows: EPG density, mono CH numbers encode true order — */
 .channel-list { list-style: none; margin: 0; padding: 6px 6px 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }

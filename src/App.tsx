@@ -47,7 +47,6 @@ export default function App() {
   const { history, record } = useWatchHistory();
 
   const [active, setActive] = useState<Channel | null>(null);
-  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [contentMode, setContentMode] = useState<ContentMode>("live");
   const [screen, setScreen] = useState<Screen>("home");
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
@@ -103,7 +102,6 @@ export default function App() {
     disconnect();
     setActive(null);
     setDetailTarget(null);
-    setShowFavoritesOnly(false);
     setContentMode("live");
     setSmartFilter("all");
     setCategory(null);
@@ -289,13 +287,10 @@ export default function App() {
           channels={channels}
           activeId={active?.id ?? null}
           favoriteIds={favoriteIds}
-          showFavoritesOnly={showFavoritesOnly}
-          onToggleShowFavorites={() => setShowFavoritesOnly((v) => !v)}
           onSelect={setActive}
           onToggleFavorite={toggle}
           loading={loading}
           onHome={goHome}
-          onDisconnect={handleDisconnect}
         />
         <main className="main">
           {error && <div className="banner banner-error">{error}</div>}
@@ -322,7 +317,6 @@ export default function App() {
         search={search}
         onSearch={setSearch}
         onHome={goHome}
-        onDisconnect={handleDisconnect}
       />
       <main className="browse-main">
         <header className="browse-header">

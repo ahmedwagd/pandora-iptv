@@ -10,7 +10,6 @@ interface FilterSidebarProps {
   search: string;
   onSearch: (s: string) => void;
   onHome: () => void;
-  onDisconnect: () => void;
 }
 
 export function FilterSidebar({
@@ -23,7 +22,6 @@ export function FilterSidebar({
   search,
   onSearch,
   onHome,
-  onDisconnect,
 }: FilterSidebarProps) {
   const smart = (f: SmartFilter, label: string) => (
     <button
@@ -50,9 +48,6 @@ export function FilterSidebar({
         <div className="sidebar-actions">
           <button className="change-source" onClick={onHome}>
             Home
-          </button>
-          <button className="change-source" onClick={onDisconnect}>
-            Exit
           </button>
         </div>
       </div>
