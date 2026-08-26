@@ -99,13 +99,13 @@ export function Home(props: HomeProps) {
   const {
     sourceLabel,
     onSelect,
-    onDisconnect,
     onSettings,
     profileName,
     username,
     expDateFormatted,
     isTrial,
   } = props;
+  void props.onDisconnect;
   const total = props.liveCount + props.movieCount + props.seriesCount;
   const now = useNow();
   const dateStr = now.toLocaleDateString(undefined, {
@@ -154,9 +154,6 @@ export function Home(props: HomeProps) {
           <ThemeToggle />
           <button className="home-settings" onClick={onSettings} aria-label={s.settings}>
             ⚙ {s.settings}
-          </button>
-          <button className="home-logout" onClick={onDisconnect}>
-            {s.exit}
           </button>
         </div>
       </header>

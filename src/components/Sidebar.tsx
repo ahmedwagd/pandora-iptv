@@ -50,6 +50,7 @@ export function Sidebar({
         onToggleFavorite={onToggleFavorite}
         loading={loading}
         getEpgForChannel={getEpgForChannel}
+        categoriesFirst
       />
     </div>
   );

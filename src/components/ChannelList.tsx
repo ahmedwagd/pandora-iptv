@@ -17,6 +17,8 @@ interface ChannelListProps {
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
   profileId?: string | null;
   onEpgReminder?: (ch: Channel, prog: EpgProgramme) => void;
+  /** Live-only: start from a categories list and drill into channels per category. */
+  categoriesFirst?: boolean;
 }
 
 function fmtResumeRow(sec: number): string {
@@ -184,11 +186,13 @@ export function ChannelList({
   loading = false,
   getEpgForChannel,
   profileId,
+  categoriesFirst = false,
 }: ChannelListProps) {
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("All");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [epgSearch, setEpgSearch] = useState(false);
+  const [cat, setCat] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30000);
@@ -210,11 +214,57 @@ export function ChannelList({
     return ["All", ...sorted];
   }, [channels]);
 
+  const catCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    channels.forEach((c) => m.set(c.group, (m.get(c.group) ?? 0) + 1));
+    return m;
+  }, [channels]);
+
+  const { positions } = usePlaybackResume(profileId ?? null);
+  const continueIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const [id, pos] of Object.entries(positions)) {
+      if (pos && isResumableRow(pos.position, pos.duration)) set.add(id);
+    }
+    return set;
+  }, [positions]);
+  const favCount = useMemo(
+    () => channels.filter((c) => favoriteIds.has(c.id)).length,
+    [channels, favoriteIds]
+  );
+  const contCount = useMemo(
+    () => channels.filter((c) => continueIds.has(c.id)).length,
+    [channels, continueIds]
+  );
+  const catRows = useMemo(
+    () => [
+      { key: "All", name: "All channels", count: channels.length },
+      { key: "Favorites", name: "Favorites", count: favCount },
+      { key: "Continue", name: "Continue", count: contCount },
+      ...groups
+        .filter((g) => g !== "All")
+        .map((g) => ({ key: g, name: g, count: catCounts.get(g) ?? 0 })),
+    ],
+    [channels.length, favCount, contCount, groups, catCounts]
+  );
+  const catLabel = (c: string) =>
+    c === "All" ? "All channels" : c === "Favorites" ? "Favorites" : c === "Continue" ? "Continue" : c;
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     return channels.filter((c) => {
       if (favoritesOnly && !favoriteIds.has(c.id)) return false;
-      if (group !== "All" && c.group !== group) return false;
+      if (categoriesFirst) {
+        if (cat === "Favorites") {
+          if (!favoriteIds.has(c.id)) return false;
+        } else if (cat === "Continue") {
+          if (!continueIds.has(c.id)) return false;
+        } else if (cat && cat !== "All" && c.group !== cat) {
+          return false;
+        }
+      } else if (group !== "All" && c.group !== group) {
+        return false;
+      }
       if (!term) return true;
       if (c.name.toLowerCase().includes(term)) return true;
       if (epgSearch && getEpgForChannel) {
@@ -225,119 +275,159 @@ export function ChannelList({
       }
       return false;
     });
-  }, [channels, search, group, favoritesOnly, favoriteIds, epgSearch, getEpgForChannel]);
+  }, [channels, search, group, cat, categoriesFirst, favoritesOnly, favoriteIds, epgSearch, getEpgForChannel, continueIds]);
 
   return (
     <div className="channel-panel">
-      <div className="filters">
-        <div className="filter-row">
-          <input
-            id="channel-search"
-            type="text"
-            placeholder="Search…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Search"
-          />
-          {showFavorite && (
-            <button
-              className={`favorites-toggle ${favoritesOnly ? "active" : ""}`}
-              onClick={() => setFavoritesOnly((v) => !v)}
-              aria-pressed={favoritesOnly}
-              title={favoritesOnly ? "Show all" : "Show favorites only"}
-            >
-              ★
-            </button>
-          )}
-        </div>
-        {due && (
-          <div className="epg-due-banner" role="alert">
-            <span className="epg-due-dot" aria-hidden>
-              ●
-            </span>
-            <span className="epg-due-text">
-              "{due.title}" starting now on <strong>{due.channelName}</strong>
-            </span>
-            <button
-              type="button"
-              className="epg-due-dismiss"
-              onClick={dismissDue}
-              aria-label="Dismiss"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-        <div className="filter-row filter-row--epg">
-          <label className="epg-search-toggle">
-            <input
-              type="checkbox"
-              checked={epgSearch}
-              onChange={(e) => setEpgSearch(e.target.checked)}
-            />{" "}
-            Search programmes
-          </label>
-        </div>
-        <div className="filter-row filter-row--meta">
-          <select
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-            aria-label="Filter by group"
+      {due && (
+        <div className="epg-due-banner" role="alert">
+          <span className="epg-due-dot" aria-hidden>
+            ●
+          </span>
+          <span className="epg-due-text">
+            "{due.title}" starting now on <strong>{due.channelName}</strong>
+          </span>
+          <button
+            type="button"
+            className="epg-due-dismiss"
+            onClick={dismissDue}
+            aria-label="Dismiss"
           >
-            {groups.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-          <span className="filter-count">{filtered.length}</span>
+            ✕
+          </button>
         </div>
-      </div>
+      )}
 
-      {loading ? (
-        <div className="channel-list-empty">
-          <div
-            className="colorbar colorbar--loading"
-            style={{ height: 2, marginBottom: 12 }}
-            aria-hidden
-          />
-          <span> Tuning signal…</span>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="channel-list-empty">
-          <EmptyState message="No channels match your search." />
+      {categoriesFirst && cat === null ? (
+        <div className="cat-view" role="listbox" aria-label="Categories">
+          <div className="cat-eyebrow">
+            <span>Channels</span>
+            <span>{channels.length}</span>
+          </div>
+          {catRows.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              className="cat-row"
+              role="option"
+              onClick={() => setCat(r.key)}
+            >
+              <span className="cat-name">{r.name}</span>
+              <span className="cat-count">{r.count}</span>
+            </button>
+          ))}
         </div>
       ) : (
-        <ul className="channel-list" role="listbox" aria-label="Channels">
-          {filtered.map((ch, idx) => (
-            <ChannelRow
-              key={ch.id}
-              ch={ch}
-              idx={idx}
-              activeId={activeId}
-              favoriteIds={favoriteIds}
-              onSelect={onSelect}
-              onToggleFavorite={onToggleFavorite}
-              showFavorite={showFavorite}
-              getEpgForChannel={getEpgForChannel}
-              profileId={profileId}
-              hasReminder={hasReminder}
-              now={now}
-              onToggleReminder={(channel, prog) => {
-                if (hasReminder(channel.id, prog.startTime))
-                  removeReminder(`${channel.id}::${prog.startTime}`);
-                else
-                  addReminder({
-                    channelId: channel.id,
-                    channelName: channel.name,
-                    title: prog.title,
-                    startTime: prog.startTime,
-                    stopTime: prog.stopTime,
-                  });
-              }}
-            />
-          ))}
-        </ul>
+        <>
+          {categoriesFirst && (
+            <div className="cat-bar">
+              <button
+                type="button"
+                className="cat-back"
+                onClick={() => setCat(null)}
+                aria-label="Back to categories"
+              >
+                ←
+              </button>
+              <span className="cat-bar-title">{catLabel(cat ?? "All")}</span>
+              <span className="cat-bar-count">{filtered.length}</span>
+            </div>
+          )}
+          <div className="filters">
+            <div className="filter-row">
+              <input
+                id="channel-search"
+                type="text"
+                placeholder="Search…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search"
+              />
+              {showFavorite && (
+                <button
+                  className={`favorites-toggle ${favoritesOnly ? "active" : ""}`}
+                  onClick={() => setFavoritesOnly((v) => !v)}
+                  aria-pressed={favoritesOnly}
+                  title={favoritesOnly ? "Show all" : "Show favorites only"}
+                >
+                  ★
+                </button>
+              )}
+            </div>
+            <div className="filter-row filter-row--epg">
+              <label className="epg-search-toggle">
+                <input
+                  type="checkbox"
+                  checked={epgSearch}
+                  onChange={(e) => setEpgSearch(e.target.checked)}
+                />{" "}
+                Search programmes
+              </label>
+            </div>
+            {!categoriesFirst && (
+              <div className="filter-row filter-row--meta">
+                <select
+                  value={group}
+                  onChange={(e) => setGroup(e.target.value)}
+                  aria-label="Filter by group"
+                >
+                  {groups.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+                <span className="filter-count">{filtered.length}</span>
+              </div>
+            )}
+          </div>
+
+          {loading ? (
+            <div className="channel-list-empty">
+              <div
+                className="colorbar colorbar--loading"
+                style={{ height: 2, marginBottom: 12 }}
+                aria-hidden
+              />
+              <span> Tuning signal…</span>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="channel-list-empty">
+              <EmptyState message="No channels match your search." />
+            </div>
+          ) : (
+            <ul className="channel-list" role="listbox" aria-label="Channels">
+              {filtered.map((ch, idx) => (
+                <ChannelRow
+                  key={ch.id}
+                  ch={ch}
+                  idx={idx}
+                  activeId={activeId}
+                  favoriteIds={favoriteIds}
+                  onSelect={onSelect}
+                  onToggleFavorite={onToggleFavorite}
+                  showFavorite={showFavorite}
+                  getEpgForChannel={getEpgForChannel}
+                  profileId={profileId}
+                  hasReminder={hasReminder}
+                  now={now}
+                  onToggleReminder={(channel, prog) => {
+                    if (hasReminder(channel.id, prog.startTime))
+                      removeReminder(`${channel.id}::${prog.startTime}`);
+                    else
+                      addReminder({
+                        channelId: channel.id,
+                        channelName: channel.name,
+                        title: prog.title,
+                        startTime: prog.startTime,
+                        stopTime: prog.stopTime,
+                      });
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
