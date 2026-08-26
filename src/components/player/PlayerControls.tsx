@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Channel } from "../../types";
+import { useSkipDuration } from "../../hooks/useSkipDuration";
 
 interface PlayerControlsProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -15,6 +16,7 @@ function fmtTime(sec: number): string {
 }
 
 export function PlayerControls({ videoRef, channel, onRetry }: PlayerControlsProps) {
+  const { skipDuration } = useSkipDuration();
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
@@ -37,6 +39,15 @@ export function PlayerControls({ videoRef, channel, onRetry }: PlayerControlsPro
       hideTimer.current = window.setTimeout(() => setVisible(false), 3000);
     }
   }, [paused]);
+
+  const toggleVisible = useCallback(() => {
+    if (visible) {
+      if (hideTimer.current) window.clearTimeout(hideTimer.current);
+      setVisible(false);
+    } else {
+      scheduleHide();
+    }
+  }, [visible, scheduleHide]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -150,6 +161,66 @@ export function PlayerControls({ videoRef, channel, onRetry }: PlayerControlsPro
     scheduleHide();
   }, [videoRef, scheduleHide]);
 
+  const skip = useCallback(
+    (delta: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (seekable) v.currentTime = Math.max(0, Math.min(duration, v.currentTime + delta));
+      else if (delta < 0) v.currentTime = Math.max(0, v.currentTime + delta);
+      else v.currentTime = v.currentTime + delta;
+      scheduleHide();
+    },
+    [videoRef, seekable, duration, scheduleHide]
+  );
+  const skipBack = useCallback(() => skip(-skipDuration), [skip, skipDuration]);
+  const skipForward = useCallback(() => skip(skipDuration), [skip, skipDuration]);
+
+  const lastToggleRef = useRef(0);
+  const guardedToggle = useCallback(() => {
+    const now = Date.now();
+    if (now - lastToggleRef.current < 300) return;
+    lastToggleRef.current = now;
+    toggleVisible();
+  }, [toggleVisible]);
+
+  // left-click anywhere on the player should toggle controls visibility (even when hidden)
+  useEffect(() => {
+    const isInteractive = (el: HTMLElement | null) => !!el?.closest("button, input, [role='slider']");
+    const isInPlayer = (target: HTMLElement | null) => {
+      if (!target) return false;
+      const playerEl = target.closest?.(".player") as HTMLElement | null;
+      if (!playerEl) return false;
+      if (controlsRef.current && !playerEl.contains(controlsRef.current)) return false;
+      return true;
+    };
+    const onClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!isInPlayer(target)) return;
+      if (isInteractive(target)) return;
+      guardedToggle();
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, [guardedToggle]);
+
+  // direct player element listeners — more reliable than document in Tauri WebView
+  useEffect(() => {
+    const playerEl = videoRef.current?.parentElement as HTMLElement | null;
+    if (!playerEl) return;
+    const isInteractive = (el: HTMLElement | null) => !!el?.closest("button, input, [role='slider']");
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (isInteractive(target)) return;
+      // only left-click
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      guardedToggle();
+    };
+    playerEl.addEventListener("click", handler);
+    return () => playerEl.removeEventListener("click", handler);
+  }, [guardedToggle, channel]);
+
   // local keyboard for player when focused/hovered
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -179,13 +250,15 @@ export function PlayerControls({ videoRef, channel, onRetry }: PlayerControlsPro
         case "arrowleft":
           if (seekable) {
             e.preventDefault();
-            v.currentTime = Math.max(0, v.currentTime - 10);
+            v.currentTime = Math.max(0, v.currentTime - skipDuration);
+            scheduleHide();
           }
           break;
         case "arrowright":
           if (seekable) {
             e.preventDefault();
-            v.currentTime = Math.min(duration, v.currentTime + 10);
+            v.currentTime = Math.min(duration, v.currentTime + skipDuration);
+            scheduleHide();
           }
           break;
         case "arrowup":
@@ -204,7 +277,7 @@ export function PlayerControls({ videoRef, channel, onRetry }: PlayerControlsPro
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [videoRef, togglePlay, toggleMute, toggleFullscreen, togglePiP, seekable, duration]);
+  }, [videoRef, togglePlay, toggleMute, toggleFullscreen, togglePiP, seekable, duration, skipDuration, scheduleHide]);
 
   if (!channel) return null;
 
@@ -219,9 +292,40 @@ export function PlayerControls({ videoRef, channel, onRetry }: PlayerControlsPro
         if (!paused && hideTimer.current) window.clearTimeout(hideTimer.current);
         if (!paused) hideTimer.current = window.setTimeout(() => setVisible(false), 800);
       }}
+      onClick={(e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest("button, input, [role='slider']")) return;
+        guardedToggle();
+      }}
+      onContextMenu={(e) => e.preventDefault()}
       role="toolbar"
       aria-label="Playback controls"
     >
+      <div className="pc-center" aria-hidden={false}>
+        <button
+          type="button"
+          className="pc-btn pc-btn--skip"
+          onClick={skipBack}
+          aria-label={`Back ${skipDuration} seconds`}
+          title={`Back ${skipDuration}s`}
+          disabled={!seekable && current <= 0}
+        >
+          <span className="pc-skip-label">↺ {skipDuration}s</span>
+        </button>
+        <button type="button" className="pc-btn pc-btn--center" onClick={togglePlay} aria-label={paused ? "Play" : "Pause"}>
+          <span className="pc-center-icon">{paused ? "▶" : "❚❚"}</span>
+        </button>
+        <button
+          type="button"
+          className="pc-btn pc-btn--skip"
+          onClick={skipForward}
+          aria-label={`Forward ${skipDuration} seconds`}
+          title={`Forward ${skipDuration}s`}
+          disabled={!seekable && isLive}
+        >
+          <span className="pc-skip-label">{skipDuration}s ↻</span>
+        </button>
+      </div>
       <div className="player-controls-row">
         <button type="button" className="pc-btn pc-btn--play" onClick={togglePlay} aria-label={paused ? "Play" : "Pause"}>
           {paused ? "▶" : "❚❚"}

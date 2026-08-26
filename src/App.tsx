@@ -14,7 +14,7 @@ import { useWatchHistory } from "./hooks/useWatchHistory";
 import { useEpg } from "./hooks/useEpg";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useProfiles } from "./hooks/useProfiles";
-import { ProfileSwitcher } from "./components/ProfileSwitcher";
+import { Settings } from "./components/Settings";
 import { useAppStore } from "./stores/appStore";
 import { getXtreamAccount, type XtreamAccount } from "./lib/xtream";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
@@ -132,6 +132,7 @@ export default function App() {
         if (screen === "watch") setScreen(detailTarget ? "detail" : "browse");
         else if (screen === "detail") backToBrowse();
         else if (screen === "browse") goHome();
+        else if (screen === "settings") setScreen("home");
       },
       f: () => {
         // favorite toggle: detail > watch > browse poster (ignore in browse live)
@@ -346,32 +347,38 @@ export default function App() {
 
   if (screen === "home") {
     return (
-      <>
-        <div style={{ position: "fixed", top: 12, left: 12, zIndex: 20 }}>
-          <ProfileSwitcher
-            profiles={profiles}
-            activeId={activeId}
-            onSwitch={handleSwitchProfile}
-            onCreate={createProfile}
-            onDelete={removeProfile}
-          />
-        </div>
-        <Home
-          liveCount={channels.length}
-          movieCount={movies.length}
-          seriesCount={series.length}
-          moviesLoading={moviesLoading}
-          seriesLoading={seriesLoading}
-          sourceLabel={sourceLabel}
-          onSelect={enterContent}
-          onDisconnect={handleDisconnect}
-          profileName={activeProfile?.name ?? null}
-          username={account?.username ?? xtreamCreds?.username ?? null}
-          expDateFormatted={account?.expDateFormatted ?? null}
-          expTimestamp={account?.expTimestamp ?? null}
-          isTrial={account?.isTrial ?? false}
-        />
-      </>
+      <Home
+        liveCount={channels.length}
+        movieCount={movies.length}
+        seriesCount={series.length}
+        moviesLoading={moviesLoading}
+        seriesLoading={seriesLoading}
+        sourceLabel={sourceLabel}
+        onSelect={enterContent}
+        onDisconnect={handleDisconnect}
+        onSettings={() => setScreen("settings")}
+        profileName={activeProfile?.name ?? null}
+        username={account?.username ?? xtreamCreds?.username ?? null}
+        expDateFormatted={account?.expDateFormatted ?? null}
+        expTimestamp={account?.expTimestamp ?? null}
+        isTrial={account?.isTrial ?? false}
+      />
+    );
+  }
+
+  if (screen === "settings") {
+    return (
+      <Settings
+        profiles={profiles}
+        activeId={activeId}
+        onSwitch={handleSwitchProfile}
+        onCreate={createProfile}
+        onDelete={removeProfile}
+        onBack={() => setScreen("home")}
+        account={account}
+        username={xtreamCreds?.username ?? null}
+        onDisconnect={handleDisconnect}
+      />
     );
   }
 

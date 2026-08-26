@@ -4,6 +4,9 @@ export const StorageKeys = {
   watchHistory: "watchHistory",
   profiles: "profiles",
   activeProfileId: "activeProfileId",
+  playbackSkip: "playbackSkip",
+  videoFitMode: "videoFitMode",
+  videoZoom: "videoZoom",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys] | string;

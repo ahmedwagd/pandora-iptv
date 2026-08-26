@@ -1,5 +1,15 @@
+import { useEffect, useState } from "react";
 import type { ContentMode } from "../types";
 import { ColorBar } from "./ColorBar";
+
+function useNow(intervalMs = 1000): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
 
 interface HomeProps {
   liveCount: number;
@@ -10,6 +20,7 @@ interface HomeProps {
   sourceLabel: string | null;
   onSelect: (mode: ContentMode) => void;
   onDisconnect: () => void;
+  onSettings: () => void;
   profileName?: string | null;
   username?: string | null;
   expDateFormatted?: string | null;
@@ -80,8 +91,11 @@ const TILES: {
 ];
 
 export function Home(props: HomeProps) {
-  const { sourceLabel, onSelect, onDisconnect, profileName, username, expDateFormatted, isTrial } = props;
+  const { sourceLabel, onSelect, onDisconnect, onSettings, profileName, username, expDateFormatted, isTrial } = props;
   const total = props.liveCount + props.movieCount + props.seriesCount;
+  const now = useNow();
+  const dateStr = now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "short", day: "numeric" });
+  const timeStr = now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   // expiration urgency: red if <7 days or expired
   let expUrgency: "ok" | "warn" | "none" = "none";
@@ -105,10 +119,22 @@ export function Home(props: HomeProps) {
             </span>
           </div>
           {sourceLabel && <p className="home-subtitle">{sourceLabel}</p>}
+          <div className="home-datetime" aria-live="off">
+            <span className="home-date">{dateStr}</span>
+            <span className="home-datetime-dot" aria-hidden>
+              ·
+            </span>
+            <span className="home-time">{timeStr}</span>
+          </div>
         </div>
-        <button className="home-logout" onClick={onDisconnect}>
-          Exit
-        </button>
+        <div className="home-header-actions">
+          <button className="home-settings" onClick={onSettings} aria-label="Settings">
+            ⚙ Settings
+          </button>
+          <button className="home-logout" onClick={onDisconnect}>
+            Exit
+          </button>
+        </div>
       </header>
 
       <div className="home-grid">

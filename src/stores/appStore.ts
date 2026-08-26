@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { Channel, ContentMode, Series } from "../types";
 import type { SmartFilter } from "../components/FilterSidebar";
 
-export type Screen = "home" | "browse" | "detail" | "watch";
+export type Screen = "home" | "browse" | "detail" | "watch" | "settings";
 export type DetailTarget =
   | { kind: "movie"; channel: Channel }
   | { kind: "series"; series: Series };
