@@ -82,6 +82,7 @@ const SearchField = memo(function SearchField({
   return (
     <div className="filter-search">
       <input
+        id="browse-search"
         type="text"
         placeholder="Search titles…"
         value={search}

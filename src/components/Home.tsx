@@ -10,6 +10,11 @@ interface HomeProps {
   sourceLabel: string | null;
   onSelect: (mode: ContentMode) => void;
   onDisconnect: () => void;
+  profileName?: string | null;
+  username?: string | null;
+  expDateFormatted?: string | null;
+  expTimestamp?: number | null;
+  isTrial?: boolean;
 }
 
 function countText(count: number, loading: boolean): string {
@@ -75,15 +80,23 @@ const TILES: {
 ];
 
 export function Home(props: HomeProps) {
-  const { sourceLabel, onSelect, onDisconnect } = props;
+  const { sourceLabel, onSelect, onDisconnect, profileName, username, expDateFormatted, isTrial } = props;
   const total = props.liveCount + props.movieCount + props.seriesCount;
+
+  // expiration urgency: red if <7 days or expired
+  let expUrgency: "ok" | "warn" | "none" = "none";
+  const expTs = props.expTimestamp;
+  if (expDateFormatted && typeof expTs === "number" && expTs) {
+    const days = Math.ceil((expTs - Date.now()) / 86400000);
+    expUrgency = days <= 7 ? "warn" : "ok";
+  }
 
   return (
     <div className="home">
       <header className="home-header">
         <div className="home-header-block">
           <div className="home-header-top">
-            <h1 className="home-title">Library</h1>
+            <h1 className="home-title">PandoraIPTV</h1>
             <span className="home-signal">
               <span className="signal-dot" aria-hidden>
                 ●
@@ -118,6 +131,30 @@ export function Home(props: HomeProps) {
           </button>
         ))}
       </div>
+
+      {(profileName || username || expDateFormatted) && (
+        <footer className="home-footer">
+          <div className="home-footer-left">
+            {profileName && (
+              <span className="home-footer-profile">
+                <span aria-hidden>●</span> {profileName}
+                {username && <span className="home-footer-sub"> · {username}</span>}
+              </span>
+            )}
+            {!profileName && username && <span className="home-footer-profile">{username}</span>}
+          </div>
+          <div className="home-footer-right">
+            {expDateFormatted ? (
+              <span className={`home-footer-exp ${expUrgency === "warn" ? "home-footer-exp--warn" : ""}`} title={isTrial ? "Trial account" : undefined}>
+                {isTrial && <span className="home-footer-trial">Trial · </span>}
+                Expires {expDateFormatted}
+              </span>
+            ) : (
+              <span className="home-footer-exp home-footer-exp--none">No expiration</span>
+            )}
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

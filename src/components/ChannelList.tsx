@@ -1,5 +1,6 @@
 import { memo, useMemo, useState } from "react";
 import type { Channel } from "../types";
+import type { EpgProgramme } from "../types/epg";
 import { MediaImage } from "./MediaImage";
 import { EmptyState } from "./shared/EmptyState";
 
@@ -11,6 +12,7 @@ interface ChannelListProps {
   onToggleFavorite: (id: string) => void;
   showFavorite?: boolean;
   loading?: boolean;
+  getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
 }
 
 const ChannelRow = memo(function ChannelRow({
@@ -21,6 +23,7 @@ const ChannelRow = memo(function ChannelRow({
   onSelect,
   onToggleFavorite,
   showFavorite,
+  getEpgForChannel,
 }: {
   ch: Channel;
   idx: number;
@@ -29,9 +32,11 @@ const ChannelRow = memo(function ChannelRow({
   onSelect: (c: Channel) => void;
   onToggleFavorite: (id: string) => void;
   showFavorite: boolean;
+  getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
 }) {
   const isActive = ch.id === activeId;
   const isFav = favoriteIds.has(ch.id);
+  const epg = getEpgForChannel?.(ch.id);
   return (
     <li
       className={`channel-row ${isActive ? "active" : ""}`}
@@ -56,7 +61,11 @@ const ChannelRow = memo(function ChannelRow({
         placeholderClassName="channel-logo-placeholder"
         fallback={ch.name[0] ?? "?"}
       />
-      <span className="channel-name">{ch.name}</span>
+      <span className="channel-name-wrap">
+        <span className="channel-name">{ch.name}</span>
+        {epg?.now && <span className="channel-epg">Now: {epg.now.title}</span>}
+        {epg?.next && !epg?.now && <span className="channel-epg channel-epg--next">Next: {epg.next.title}</span>}
+      </span>
       {showFavorite && (
         <button
           type="button"
@@ -83,15 +92,18 @@ export function ChannelList({
   onToggleFavorite,
   showFavorite = true,
   loading = false,
+  getEpgForChannel,
 }: ChannelListProps) {
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("All");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
   const groups = useMemo(() => {
-    const set = new Set<string>(["All"]);
+    const collator = new Intl.Collator(undefined, { sensitivity: "base" });
+    const set = new Set<string>();
     channels.forEach((c) => set.add(c.group));
-    return Array.from(set);
+    const sorted = Array.from(set).sort((a, b) => collator.compare(a, b));
+    return ["All", ...sorted];
   }, [channels]);
 
   const filtered = useMemo(() => {
@@ -109,6 +121,7 @@ export function ChannelList({
       <div className="filters">
         <div className="filter-row">
           <input
+            id="channel-search"
             type="text"
             placeholder="Search…"
             value={search}
@@ -159,6 +172,7 @@ export function ChannelList({
               onSelect={onSelect}
               onToggleFavorite={onToggleFavorite}
               showFavorite={showFavorite}
+              getEpgForChannel={getEpgForChannel}
             />
           ))}
         </ul>

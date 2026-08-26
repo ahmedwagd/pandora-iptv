@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { XtreamCreds } from "../types";
+import type { Profile } from "../types/profile";
 import { ColorBar } from "./ColorBar";
+import { ProfileSwitcher } from "./ProfileSwitcher";
 
 interface LoginPageProps {
   xtreamCreds: XtreamCreds | null;
@@ -9,6 +11,11 @@ interface LoginPageProps {
   onLoadXtream: (creds: XtreamCreds, remember: boolean) => void;
   onLoadUrl: (url: string) => void;
   onLoadFile: () => void;
+  profiles?: Profile[];
+  activeId?: string | null;
+  onSwitchProfile?: (id: string) => void;
+  onCreateProfile?: (name: string) => void;
+  onDeleteProfile?: (id: string) => void;
 }
 
 export function LoginPage({
@@ -18,6 +25,11 @@ export function LoginPage({
   onLoadXtream,
   onLoadUrl,
   onLoadFile,
+  profiles,
+  activeId,
+  onSwitchProfile,
+  onCreateProfile,
+  onDeleteProfile,
 }: LoginPageProps) {
   const [mode, setMode] = useState<"xtream" | "m3u">("xtream");
   const [server, setServer] = useState(xtreamCreds?.server ?? "");
@@ -27,15 +39,22 @@ export function LoginPage({
   const [url, setUrl] = useState("");
 
   // Saved credentials load from disk asynchronously; backfill the form
-  // once they arrive (only when the fields are still empty) and tick
-  // "Remember me" since credentials were persisted.
+  // once they arrive. When profile switches (activeId changes), sync fields
+  // to the new profile's creds so login always reflects active profile.
   useEffect(() => {
-    if (!xtreamCreds) return;
-    setServer((v) => v || xtreamCreds.server || "");
-    setUsername((v) => v || xtreamCreds.username || "");
-    setPassword((v) => v || xtreamCreds.password || "");
-    setRemember(true);
-  }, [xtreamCreds]);
+    if (xtreamCreds) {
+      setServer(xtreamCreds.server || "");
+      setUsername(xtreamCreds.username || "");
+      setPassword(xtreamCreds.password || "");
+      setRemember(true);
+    } else if (activeId) {
+      // profile without saved creds — clear form for fresh login
+      setServer("");
+      setUsername("");
+      setPassword("");
+      setRemember(false);
+    }
+  }, [xtreamCreds, activeId]);
 
   const canConnect = Boolean(server.trim() && username.trim() && password.trim() && !loading);
   const canLoadUrl = Boolean(url.trim() && !loading);
@@ -62,6 +81,18 @@ export function LoginPage({
 
       <main className="login-main">
         <div className="login-panel">
+          {profiles && onSwitchProfile && onCreateProfile && onDeleteProfile && (
+            <div className="login-profile">
+              <label>Profile</label>
+              <ProfileSwitcher
+                profiles={profiles}
+                activeId={activeId ?? null}
+                onSwitch={onSwitchProfile}
+                onCreate={onCreateProfile}
+                onDelete={onDeleteProfile}
+              />
+            </div>
+          )}
           <div className="login-tabs">
             <button
               className={`login-tab ${mode === "xtream" ? "active" : ""}`}

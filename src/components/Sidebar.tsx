@@ -1,4 +1,5 @@
 import type { Channel } from "../types";
+import type { EpgProgramme } from "../types/epg";
 import { ChannelList } from "./ChannelList";
 
 interface SidebarProps {
@@ -9,6 +10,7 @@ interface SidebarProps {
   onToggleFavorite: (id: string) => void;
   loading: boolean;
   onHome: () => void;
+  getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
 }
 
 export function Sidebar({
@@ -19,6 +21,7 @@ export function Sidebar({
   onToggleFavorite,
   loading,
   onHome,
+  getEpgForChannel,
 }: SidebarProps) {
   return (
     <div className="sidebar">
@@ -46,6 +49,7 @@ export function Sidebar({
         onSelect={onSelect}
         onToggleFavorite={onToggleFavorite}
         loading={loading}
+        getEpgForChannel={getEpgForChannel}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import type { Channel, MovieDetail, Season, Series, XtreamCreds } from "../types";
+import type { EpgMap, EpgProgramme } from "../types/epg";
 
 interface XtreamCategory {
   category_id: string;
@@ -74,7 +75,39 @@ interface XtreamAccountInfo {
   user_info?: {
     auth?: number;
     status?: string;
+    username?: string;
+    password?: string;
+    exp_date?: string | number | null;
+    is_trial?: string | number | null;
+    active_cons?: string | number | null;
+    created_at?: string | number | null;
+    max_connections?: string | number | null;
+    allowed_output_formats?: string[] | null;
+    message?: string | null;
   };
+  server_info?: {
+    url?: string | null;
+    port?: string | number | null;
+    https_port?: string | number | null;
+    server_protocol?: string | null;
+    rtmp_port?: string | number | null;
+    timezone?: string | null;
+    timestamp_now?: number | null;
+  };
+}
+
+export interface XtreamAccount {
+  username?: string;
+  status: string | null;
+  auth: number;
+  expDate: string | null;
+  expTimestamp: number | null;
+  expDateFormatted: string | null;
+  isTrial: boolean;
+  maxConnections: string | null;
+  activeConnections: string | null;
+  createdAt: string | null;
+  message: string | null;
 }
 
 export type FetchFn = (
@@ -190,6 +223,47 @@ async function fetchJson<T>(
     }
   }
   throw lastErr;
+}
+
+function toTimestamp(exp: string | number | null | undefined): number | null {
+  if (exp == null || exp === "") return null;
+  const n = Number(exp);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // Xtream exp_date is unix seconds
+  return n > 1e12 ? n : n * 1000;
+}
+
+function formatExpDate(exp: string | number | null | undefined): string | null {
+  const ts = toTimestamp(exp);
+  if (ts == null) return null;
+  try {
+    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return null;
+  }
+}
+
+export async function getXtreamAccount(
+  creds: XtreamCreds,
+  fetchFn: FetchFn,
+  opts?: { signal?: AbortSignal }
+): Promise<XtreamAccount> {
+  const data = await fetchJson<XtreamAccountInfo>(fetchFn, buildApiUrl(creds), opts);
+  const u = data.user_info ?? {};
+  const ts = toTimestamp(u.exp_date as string | number | null | undefined);
+  return {
+    username: u.username ?? creds.username,
+    status: u.status ?? null,
+    auth: typeof u.auth === "number" ? u.auth : Number(u.auth ?? 0),
+    expDate: u.exp_date != null ? String(u.exp_date) : null,
+    expTimestamp: ts,
+    expDateFormatted: formatExpDate(u.exp_date as string | number | null | undefined),
+    isTrial: String(u.is_trial ?? "0") === "1",
+    maxConnections: u.max_connections != null ? String(u.max_connections) : null,
+    activeConnections: u.active_cons != null ? String(u.active_cons) : null,
+    createdAt: u.created_at != null ? String(u.created_at) : null,
+    message: u.message ?? null,
+  };
 }
 
 async function assertAuth(
@@ -331,6 +405,174 @@ export async function getXtreamSeasons(
   return seasons;
 }
 
+/* ── EPG ── */
+interface XtreamEpgListing {
+  channel_id?: string;
+  id?: string;
+  epg_id?: string;
+  stream_id?: string | number;
+  title: string;
+  name?: string;
+  description?: string;
+  descr?: string;
+  desc?: string;
+  start: string;
+  stop?: string;
+  end?: string;
+  start_timestamp?: string | number;
+  stop_timestamp?: string | number;
+}
+
+interface XtreamSimpleDataTableResponse {
+  epg_listings?: XtreamEpgListing[] | Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+interface XtreamShortEpgResponse {
+  epg_listings?: XtreamEpgListing[];
+}
+
+function parseEpgTime(value: string | number | undefined): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "number") return value * 1000 > 1e12 ? value : value * 1000;
+  const s = String(value).trim();
+  if (!s) return undefined;
+  // numeric string timestamp
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    return n > 1e12 ? n : n * 1000;
+  }
+  // "2026-08-26 12:00:00" -> "2026-08-26T12:00:00"
+  const iso = s.includes("T") ? s : s.replace(" ", "T");
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : undefined;
+}
+
+function toEpgProgramme(raw: XtreamEpgListing, fallbackChannelId: string): EpgProgramme | null {
+  const title = raw.title ?? raw.name ?? "";
+  if (!title) return null;
+  const channelId = String(raw.channel_id ?? raw.id ?? raw.epg_id ?? raw.stream_id ?? fallbackChannelId);
+  const startStr = raw.start;
+  const stopStr = raw.stop ?? raw.end ?? "";
+  const startTime = parseEpgTime(raw.start_timestamp ?? startStr);
+  const stopTime = parseEpgTime(raw.stop_timestamp ?? stopStr);
+  if (startTime == null || stopTime == null) return null;
+  return {
+    channelId,
+    title,
+    description: raw.description ?? raw.descr ?? raw.desc ?? undefined,
+    start: startStr,
+    stop: stopStr || startStr,
+    startTime,
+    stopTime,
+  };
+}
+
+function extractListings(data: unknown): XtreamEpgListing[] {
+  if (!data || typeof data !== "object") return [];
+  const obj = data as Record<string, unknown>;
+  // common: { epg_listings: [...] }
+  if (Array.isArray(obj.epg_listings)) return obj.epg_listings as XtreamEpgListing[];
+  // provider quirk: { epg_listings: { "123": {...}, "456": [...] } }
+  if (obj.epg_listings && typeof obj.epg_listings === "object" && !Array.isArray(obj.epg_listings)) {
+    const map = obj.epg_listings as Record<string, unknown>;
+    const out: XtreamEpgListing[] = [];
+    for (const [cid, val] of Object.entries(map)) {
+      if (Array.isArray(val)) {
+        for (const v of val) out.push({ ...(v as object), channel_id: cid } as XtreamEpgListing);
+      } else if (val && typeof val === "object") {
+        out.push({ ...(val as object), channel_id: cid } as XtreamEpgListing);
+      }
+    }
+    return out;
+  }
+  // fallback: top-level keys are stream_ids with programme(s) as value (no epg_listings wrapper)
+  const keys = Object.keys(obj).filter((k) => /^\d+$/.test(k));
+  if (keys.length > 0) {
+    const out: XtreamEpgListing[] = [];
+    for (const k of keys) {
+      const val = obj[k];
+      if (Array.isArray(val)) {
+        for (const v of val) out.push({ ...(v as object), channel_id: k } as XtreamEpgListing);
+      } else if (val && typeof val === "object") {
+        out.push({ ...(val as object), channel_id: k } as XtreamEpgListing);
+      }
+    }
+    if (out.length > 0) return out;
+  }
+  return [];
+}
+
+function buildEpgMap(listings: XtreamEpgListing[]): EpgMap {
+  const now = Date.now();
+  const byChannel = new Map<string, XtreamEpgListing[]>();
+  for (const raw of listings) {
+    const prog = toEpgProgramme(raw, "");
+    if (!prog) continue;
+    const arr = byChannel.get(prog.channelId) ?? [];
+    arr.push(raw);
+    byChannel.set(prog.channelId, arr);
+  }
+  const result: EpgMap = new Map();
+  for (const [cid, raws] of byChannel) {
+    const progs = raws
+      .map((r) => toEpgProgramme(r, cid)!)
+      .filter(Boolean)
+      .sort((a, b) => a.startTime - b.startTime);
+    // find now/next by time
+    let nowProg: EpgProgramme | undefined;
+    let nextProg: EpgProgramme | undefined;
+    for (let i = 0; i < progs.length; i++) {
+      const p = progs[i];
+      if (p.startTime <= now && now < p.stopTime) {
+        nowProg = p;
+        nextProg = progs[i + 1];
+        break;
+      }
+      if (p.startTime > now && !nowProg) {
+        // before first programme in future
+        nextProg = p;
+        break;
+      }
+    }
+    // fallback: if no now but we have sorted list, treat first as now (some providers only send 2)
+    if (!nowProg && progs.length > 0 && !nextProg) {
+      // if all in past, show last; if all in future, show first as next already handled
+      const last = progs[progs.length - 1];
+      if (last.stopTime < now) nowProg = last;
+    }
+    if ((nowProg || nextProg) && cid) result.set(cid, { now: nowProg, next: nextProg });
+  }
+  return result;
+}
+
+export async function getXtreamSimpleDataTable(
+  creds: XtreamCreds,
+  fetchFn: FetchFn,
+  opts?: { signal?: AbortSignal }
+): Promise<EpgMap> {
+  const url = buildApiUrl(creds, "get_simple_data_table");
+  const data = await fetchJson<XtreamSimpleDataTableResponse>(fetchFn, url, opts);
+  const listings = extractListings(data);
+  if (listings.length === 0) return new Map();
+  return buildEpgMap(listings);
+}
+
+export async function getXtreamShortEpg(
+  creds: XtreamCreds,
+  fetchFn: FetchFn,
+  streamId: string,
+  opts?: { signal?: AbortSignal }
+): Promise<EpgProgramme[]> {
+  const url = buildApiUrl(creds, `get_short_epg&stream_id=${encodeURIComponent(streamId)}`);
+  const data = await fetchJson<XtreamShortEpgResponse>(fetchFn, url, opts);
+  const listings = data.epg_listings ?? extractListings(data);
+  return listings
+    .map((r) => toEpgProgramme(r, streamId))
+    .filter((p): p is EpgProgramme => p != null)
+    .sort((a, b) => a.startTime - b.startTime);
+}
+
 /** Convenience client wrapping creds + fetchFn + retry/timeout */
 export class XtreamClient {
   constructor(
@@ -353,5 +595,14 @@ export class XtreamClient {
   }
   seasons(seriesId: string, opts?: { signal?: AbortSignal }) {
     return getXtreamSeasons(this.creds, this.fetchFn, seriesId, { ...this.opts, ...opts });
+  }
+  simpleDataTable(opts?: { signal?: AbortSignal }) {
+    return getXtreamSimpleDataTable(this.creds, this.fetchFn, { ...this.opts, ...opts });
+  }
+  shortEpg(streamId: string, opts?: { signal?: AbortSignal }) {
+    return getXtreamShortEpg(this.creds, this.fetchFn, streamId, { ...this.opts, ...opts });
+  }
+  account(opts?: { signal?: AbortSignal }) {
+    return getXtreamAccount(this.creds, this.fetchFn, { ...this.opts, ...opts });
   }
 }

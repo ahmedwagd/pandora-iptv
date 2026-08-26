@@ -3,13 +3,15 @@ import type { SmartFilter } from "../../components/FilterSidebar";
 import type { PosterCard } from "../../components/PosterGrid";
 import type { WatchItem } from "../../types";
 
+const categoryCollator = new Intl.Collator(undefined, { sensitivity: "base" });
+
 export function selectCategories(
   contentMode: "movie" | "series",
   movies: Channel[],
   series: Series[]
 ): string[] {
   const list = contentMode === "movie" ? movies.map((m) => m.group) : series.map((s) => s.group);
-  return Array.from(new Set(list));
+  return Array.from(new Set(list)).sort((a, b) => categoryCollator.compare(a, b));
 }
 
 export function selectPosterCards(args: {

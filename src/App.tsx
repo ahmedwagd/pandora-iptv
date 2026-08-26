@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Player } from "./components/Player";
 import { LoginPage } from "./components/LoginPage";
@@ -11,7 +11,13 @@ import { usePlaylist } from "./hooks/usePlaylist";
 import { useFavorites } from "./hooks/useFavorites";
 import { useXtreamCreds } from "./hooks/useXtreamCreds";
 import { useWatchHistory } from "./hooks/useWatchHistory";
+import { useEpg } from "./hooks/useEpg";
+import { useHotkeys } from "./hooks/useHotkeys";
+import { useProfiles } from "./hooks/useProfiles";
+import { ProfileSwitcher } from "./components/ProfileSwitcher";
 import { useAppStore } from "./stores/appStore";
+import { getXtreamAccount, type XtreamAccount } from "./lib/xtream";
+import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { selectCategories, selectPosterCards } from "./app/selectors/browseSelectors";
 import type { Channel, Series, XtreamCreds } from "./types";
 import "./App.css";
@@ -39,9 +45,10 @@ export default function App() {
     loadMovieDetail,
     disconnect,
   } = usePlaylist();
-  const { favoriteIds, toggle } = useFavorites();
-  const { creds: xtreamCreds, save: saveXtreamCreds, clear: clearXtreamCreds } = useXtreamCreds();
-  const { history, record } = useWatchHistory();
+  const { profiles, activeId, active: activeProfile, ready: profilesReady, create: createProfile, remove: removeProfile, switchTo: switchProfile } = useProfiles();
+  const { favoriteIds, toggle } = useFavorites(activeId);
+  const { creds: xtreamCreds, save: saveXtreamCreds, clear: clearXtreamCreds } = useXtreamCreds(activeId);
+  const { history, record } = useWatchHistory(activeId);
 
   const {
     active,
@@ -59,6 +66,98 @@ export default function App() {
     setCategory,
     setSearch,
   } = useAppStore();
+
+  const epgEnabled = sourceKind === "xtream" && contentMode === "live";
+  const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort } = useEpg(xtreamCreds, epgEnabled);
+  const activeEpg = active ? getEpgForChannel(active.id) : undefined;
+
+  const [account, setAccount] = useState<XtreamAccount | null>(null);
+  useEffect(() => {
+    if (sourceKind !== "xtream" || !xtreamCreds) {
+      setAccount(null);
+      return;
+    }
+    const ctrl = new AbortController();
+    getXtreamAccount(xtreamCreds, tauriFetch as unknown as never, { signal: ctrl.signal })
+      .then((a) => {
+        if (!ctrl.signal.aborted) setAccount(a);
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setAccount(null);
+      });
+    return () => ctrl.abort();
+  }, [sourceKind, xtreamCreds]);
+
+  useEffect(() => {
+    if (!active || !epgEnabled) return;
+    if (!activeEpg) void fetchEpgShort(active.id);
+  }, [active, activeEpg, epgEnabled, fetchEpgShort]);
+
+  // When active profile changes, reconcile playlist with that profile's creds
+  useEffect(() => {
+    if (!profilesReady || !activeId) return;
+    // if new profile has saved creds and no playlist loaded, auto-load it
+    if (xtreamCreds && sourceKind === null && !loading) {
+      loadFromXtream(xtreamCreds);
+      setContentMode("live");
+      setScreen("home");
+    }
+  }, [profilesReady, activeId, xtreamCreds, sourceKind, loading, loadFromXtream, setContentMode, setScreen]);
+
+  const handleSwitchProfile = useCallback(
+    async (id: string) => {
+      if (id === activeId) return;
+      disconnect();
+      setActive(null);
+      setDetailTarget(null);
+      setContentMode("live");
+      setSmartFilter("all");
+      setCategory(null);
+      setSearch("");
+      setScreen("home");
+      await switchProfile(id);
+    },
+    [activeId, disconnect, setActive, setCategory, setContentMode, setDetailTarget, setScreen, setSmartFilter, setSearch, switchProfile]
+  );
+
+  // Global hotkeys — respects inputs (ignoreInputs)
+  useHotkeys(
+    {
+      "/": () => {
+        const el = (document.getElementById("browse-search") as HTMLInputElement | null) ?? (document.getElementById("channel-search") as HTMLInputElement | null);
+        el?.focus();
+        el?.select();
+      },
+      Escape: () => {
+        if (screen === "watch") setScreen(detailTarget ? "detail" : "browse");
+        else if (screen === "detail") backToBrowse();
+        else if (screen === "browse") goHome();
+      },
+      f: () => {
+        // favorite toggle: detail > watch > browse poster (ignore in browse live)
+        if (screen === "detail" && detailTarget) {
+          const id = detailTarget.kind === "movie" ? detailTarget.channel.id : `series:${detailTarget.series.id}`;
+          toggle(id);
+        } else if (screen === "watch" && active) {
+          // in watch, let PlayerControls handle 'f' for fullscreen — still toggle here if not live? conflict avoided by ignoring watch 'f' for favorite (fullscreen takes priority)
+          // no-op in watch to preserve fullscreen on 'f'
+        } else if (screen === "browse" && detailTarget) {
+          const id = detailTarget.kind === "movie" ? detailTarget.channel.id : `series:${detailTarget.series.id}`;
+          toggle(id);
+        }
+      },
+      "1": () => {
+        if (screen === "home") enterContent("live");
+      },
+      "2": () => {
+        if (screen === "home") enterContent("movie");
+      },
+      "3": () => {
+        if (screen === "home") enterContent("series");
+      },
+    },
+    { enabled: sourceKind !== null }
+  );
 
   const handleLoadXtream = useCallback(
     (creds: XtreamCreds, remember: boolean) => {
@@ -107,6 +206,7 @@ export default function App() {
 
   const handleDisconnect = useCallback(() => {
     disconnect();
+    clearXtreamCreds();
     setActive(null);
     setDetailTarget(null);
     setContentMode("live");
@@ -114,7 +214,7 @@ export default function App() {
     setCategory(null);
     setSearch("");
     setScreen("home");
-  }, [disconnect, setActive, setCategory, setContentMode, setDetailTarget, setScreen, setSmartFilter, setSearch]);
+  }, [disconnect, clearXtreamCreds, setActive, setCategory, setContentMode, setDetailTarget, setScreen, setSmartFilter, setSearch]);
 
   const watch = useCallback(
     (channel: Channel) => {
@@ -157,17 +257,15 @@ export default function App() {
   const handleSmartFilter = useCallback(
     (f: typeof smartFilter) => {
       setSmartFilter(f);
-      setCategory(null);
     },
-    [setCategory, setSmartFilter]
+    [setSmartFilter]
   );
 
   const handleCategory = useCallback(
     (c: string | null) => {
       setCategory(c);
-      setSmartFilter("all");
     },
-    [setCategory, setSmartFilter]
+    [setCategory]
   );
 
   const browseCategories = useMemo(() => {
@@ -219,6 +317,15 @@ export default function App() {
     [contentMode, smartFilter, history, movies, series, watch, openMovieDetail, openSeriesDetail]
   );
 
+  if (!profilesReady) {
+    return (
+      <div className="player-empty">
+        <span className="inline-loader" aria-hidden />
+        Loading profiles…
+      </div>
+    );
+  }
+
   if (sourceKind === null) {
     return (
       <LoginPage
@@ -228,28 +335,54 @@ export default function App() {
         onLoadXtream={handleLoadXtream}
         onLoadUrl={handleLoadUrl}
         onLoadFile={handleLoadFile}
+        profiles={profiles}
+        activeId={activeId}
+        onSwitchProfile={handleSwitchProfile}
+        onCreateProfile={createProfile}
+        onDeleteProfile={removeProfile}
       />
     );
   }
 
   if (screen === "home") {
     return (
-      <Home
-        liveCount={channels.length}
-        movieCount={movies.length}
-        seriesCount={series.length}
-        moviesLoading={moviesLoading}
-        seriesLoading={seriesLoading}
-        sourceLabel={sourceLabel}
-        onSelect={enterContent}
-        onDisconnect={handleDisconnect}
-      />
+      <>
+        <div style={{ position: "fixed", top: 12, left: 12, zIndex: 20 }}>
+          <ProfileSwitcher
+            profiles={profiles}
+            activeId={activeId}
+            onSwitch={handleSwitchProfile}
+            onCreate={createProfile}
+            onDelete={removeProfile}
+          />
+        </div>
+        <Home
+          liveCount={channels.length}
+          movieCount={movies.length}
+          seriesCount={series.length}
+          moviesLoading={moviesLoading}
+          seriesLoading={seriesLoading}
+          sourceLabel={sourceLabel}
+          onSelect={enterContent}
+          onDisconnect={handleDisconnect}
+          profileName={activeProfile?.name ?? null}
+          username={account?.username ?? xtreamCreds?.username ?? null}
+          expDateFormatted={account?.expDateFormatted ?? null}
+          expTimestamp={account?.expTimestamp ?? null}
+          isTrial={account?.isTrial ?? false}
+        />
+      </>
     );
   }
 
   if (screen === "watch" && active) {
     return (
-      <WatchView channel={active} onBack={() => setScreen(detailTarget ? "detail" : "browse")} />
+      <WatchView
+        channel={active}
+        onBack={() => setScreen(detailTarget ? "detail" : "browse")}
+        epgNow={activeEpg?.now}
+        epgNext={activeEpg?.next}
+      />
     );
   }
 
@@ -292,6 +425,7 @@ export default function App() {
           onToggleFavorite={toggle}
           loading={loading}
           onHome={goHome}
+          getEpgForChannel={getEpgForChannel}
         />
         <main className="main">
           {error && <div className="banner banner-error">{error}</div>}
