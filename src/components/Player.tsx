@@ -9,6 +9,7 @@ import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 interface PlayerProps {
   channel: Channel | null;
   fitMode?: string;
+  onBack?: () => void;
 }
 
 type PlayerStatus = "idle" | "loading" | "buffering" | "reconnecting" | "error";
@@ -309,6 +310,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
         onRetry={retry}
         fitMode={fitMode}
         onCycleFitMode={videoZoom.cycleFitMode}
+        onBack={onBack}
         speed={speed}
         onSpeedChange={saveSpeed}
         audioTracks={audioTracks}
