@@ -21,9 +21,9 @@
   --color-onSurface: #dce5dd;
   --color-onSurfaceVariant: #bacac0;
 
-  --font-display: Space Grotesk Variable, Space Grotesk, sans-serif;
-  --font-body: Archivo Narrow, Archivo Variable, Archivo, sans-serif;
-  --font-mono: JetBrains Mono Variable, JetBrains Mono, monospace;
+  --font-display: Space Grotesk Variable, Space Grotesk, "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
+  --font-body: Archivo Narrow, Archivo Variable, Archivo, "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
+  --font-mono: JetBrains Mono Variable, JetBrains Mono, "Courier New", monospace;
 
   --radius-sm: 0.25rem;
   --radius: 0.5rem;
@@ -115,9 +115,9 @@
   --danger: #ffb4ab;
 
   /* — Typefaces — */
-  --font-display: "Space Grotesk Variable", "Space Grotesk", sans-serif;
-  --font-body: "Archivo Narrow", "Archivo Variable", "Archivo", sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+  --font-display: "Space Grotesk Variable", "Space Grotesk", "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
+  --font-body: "Archivo Narrow", "Archivo Variable", "Archivo", "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Courier New", monospace;
 
   /* — Type scale — */
   --text-display-xl: 72px;
@@ -150,6 +150,21 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
+
+/* Prevent text selection / dragging — app feels like TV, not a webpage */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+input, textarea, select, [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+img, a {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
 
 body {
   font-family: var(--font-body);

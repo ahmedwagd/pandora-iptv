@@ -13,6 +13,7 @@ import { useXtreamCreds } from "./hooks/useXtreamCreds";
 import { useWatchHistory } from "./hooks/useWatchHistory";
 import { useEpg } from "./hooks/useEpg";
 import { useHotkeys } from "./hooks/useHotkeys";
+import { useBlockBrowserHotkeys } from "./hooks/useBlockBrowserHotkeys";
 import { useProfiles } from "./hooks/useProfiles";
 import { usePlaybackResume } from "./hooks/usePlaybackResume";
 import { Settings } from "./components/Settings";
@@ -68,6 +69,8 @@ export default function App() {
     setCategory,
     setSearch,
   } = useAppStore();
+
+  useBlockBrowserHotkeys(true);
 
   const epgEnabled = sourceKind === "xtream" && contentMode === "live";
   const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort } = useEpg(xtreamCreds, epgEnabled);
