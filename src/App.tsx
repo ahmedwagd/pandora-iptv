@@ -441,7 +441,7 @@ export default function App() {
               Loaded: {sourceLabel} · {channels.length} channels
             </div>
           )}
-          <Player channel={active} />
+          <Player channel={active} onBack={goHome} />
         </main>
       </div>
     );

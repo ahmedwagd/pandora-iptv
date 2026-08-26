@@ -1,24 +1,134 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
 import type { Channel } from "../types";
 import { ColorBar } from "./ColorBar";
 import { PlayerControls } from "./player/PlayerControls";
+import { useVideoZoom } from "../hooks/useVideoZoom";
+import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 
 interface PlayerProps {
   channel: Channel | null;
+  fitMode?: string;
 }
 
 type PlayerStatus = "idle" | "loading" | "buffering" | "reconnecting" | "error";
 
-export function Player({ channel }: PlayerProps) {
+export interface TrackInfo {
+  id: number;
+  label: string;
+  lang?: string;
+}
+
+export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const retryCountRef = useRef(0);
   const channelRef = useRef<Channel | null>(null);
   channelRef.current = channel;
+  const videoZoom = useVideoZoom();
+  const fitMode = (fitModeProp as any) ?? videoZoom.fitMode;
+  const { speed, saveSpeed } = usePlaybackSpeed();
+  const speedRef = useRef(speed);
+  useEffect(() => { speedRef.current = speed; }, [speed]);
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<PlayerStatus>("idle");
+  const [audioTracks, setAudioTracks] = useState<TrackInfo[]>([]);
+  const [subtitleTracks, setSubtitleTracks] = useState<TrackInfo[]>([]);
+  const [audioId, setAudioId] = useState<number>(-1);
+  const [subtitleId, setSubtitleId] = useState<number>(-1);
+
+  const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
+    if (!v) return;
+    try { v.playbackRate = s; } catch {}
+  }, []);
+
+  useEffect(() => {
+    applySpeed(videoRef.current, speed);
+  }, [speed, applySpeed, channel]);
+
+  const refreshTracks = useCallback(() => {
+    const hls = hlsRef.current;
+    const v = videoRef.current;
+    if (hls) {
+      try {
+        const aTracks: any[] = (hls as any).audioTracks ?? [];
+        setAudioTracks(aTracks.map((t, i) => ({ id: t.id ?? i, label: t.name || t.lang || `Audio ${i+1}`, lang: t.lang })));
+        setAudioId(typeof (hls as any).audioTrack === "number" ? (hls as any).audioTrack : -1);
+      } catch { setAudioTracks([]); }
+      try {
+        const sTracks: any[] = (hls as any).subtitleTracks ?? [];
+        setSubtitleTracks(sTracks.map((t, i) => ({ id: t.id ?? i, label: t.name || t.lang || `Sub ${i+1}`, lang: t.lang })));
+        setSubtitleId(typeof (hls as any).subtitleTrack === "number" ? (hls as any).subtitleTrack : -1);
+      } catch { setSubtitleTracks([]); }
+    } else if (v) {
+      // native text tracks fallback
+      try {
+        const tt = Array.from(v.textTracks) as any[];
+        if (tt.length) {
+          setSubtitleTracks(tt.map((t, i) => ({ id: i, label: t.label || t.language || `Sub ${i+1}`, lang: t.language })));
+          const showing = tt.findIndex((t) => t.mode === "showing");
+          setSubtitleId(showing);
+        }
+      } catch {}
+      try {
+        const at: any = (v as any).audioTracks;
+        if (at && at.length) {
+          const arr = Array.from(at as any[]) as any[];
+          setAudioTracks(arr.map((t: any, i: number) => ({ id: i, label: t.label || t.language || `Audio ${i+1}`, lang: t.language })));
+        }
+      } catch {}
+    }
+  }, []);
+
+  const switchAudio = useCallback((id: number) => {
+    const hls = hlsRef.current;
+    if (hls && typeof (hls as any).audioTrack !== "undefined") {
+      try { (hls as any).audioTrack = id; setAudioId(id); } catch {}
+    } else {
+      const v: any = videoRef.current;
+      const at = v?.audioTracks;
+      if (at) {
+        for (let i = 0; i < at.length; i++) at[i].enabled = i === id;
+        setAudioId(id);
+      }
+    }
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const v = videoRef.current;
+    if (!v) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else {
+        const target = v.parentElement ?? v;
+        if (target.requestFullscreen) await target.requestFullscreen();
+        else await v.requestFullscreen();
+      }
+    } catch {}
+  }, []);
+
+  const switchSubtitle = useCallback((id: number) => {
+    const hls = hlsRef.current;
+    if (hls && typeof (hls as any).subtitleTrack !== "undefined") {
+      try { (hls as any).subtitleTrack = id; setSubtitleId(id); } catch {}
+      // also toggle native textTracks visibility via hls
+      const v = videoRef.current;
+      if (v) {
+        Array.from(v.textTracks).forEach((t: any) => {
+          // hls manages showing; keep native in sync if needed
+          if (id === -1) t.mode = "disabled";
+        });
+      }
+    } else {
+      const v = videoRef.current;
+      if (!v) return;
+      Array.from(v.textTracks).forEach((t: any, i: number) => {
+        t.mode = i === id ? "showing" : "disabled";
+      });
+      setSubtitleId(id);
+    }
+  }, []);
 
   const attachHls = useCallback(
     (video: HTMLVideoElement, url: string) => {
@@ -30,25 +140,25 @@ export function Player({ channel }: PlayerProps) {
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
-
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setStatus("buffering");
-        video.play().catch(() => {
-          /* autoplay blocked */
-        });
+        video.play().catch(() => {});
+        refreshTracks();
+        applySpeed(video, speedRef.current);
       });
-
+      const onTracks = () => refreshTracks();
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED as any, onTracks);
+      hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED as any, onTracks);
+      hls.on(Hls.Events.AUDIO_TRACK_SWITCHED as any, onTracks);
+      hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH as any, onTracks as any);
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
-        // Try media error recovery first (common for codec)
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           try {
             hls.recoverMediaError();
             setStatus("reconnecting");
             return;
-          } catch {
-            /* fallthrough to retry */
-          }
+          } catch {}
         }
         if (retryCountRef.current < 3) {
           retryCountRef.current += 1;
@@ -61,7 +171,6 @@ export function Player({ channel }: PlayerProps) {
             try {
               hls.startLoad();
             } catch {
-              // full reload fallback
               if (video.src !== url) {
                 hls.loadSource(url);
               }
@@ -73,7 +182,7 @@ export function Player({ channel }: PlayerProps) {
         }
       });
     },
-    []
+    [refreshTracks, applySpeed]
   );
 
   const retry = useCallback(() => {
@@ -95,45 +204,45 @@ export function Player({ channel }: PlayerProps) {
     } else {
       v.src = ch.url;
       void v.play().catch(() => {});
+      applySpeed(v, speedRef.current);
     }
-  }, [attachHls]);
+  }, [attachHls, applySpeed]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !channel) {
       setStatus("idle");
       setError(null);
+      setAudioTracks([]);
+      setSubtitleTracks([]);
+      setAudioId(-1);
+      setSubtitleId(-1);
       return;
     }
-
     setError(null);
     setStatus("loading");
     retryCountRef.current = 0;
-
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-
     const isLikelyHls = channel.url.includes(".m3u8") || channel.url.includes("m3u8");
-
     const onWaiting = () => setStatus((s) => (s === "error" ? s : "buffering"));
-    const onPlaying = () => setStatus("idle");
+    const onPlaying = () => { setStatus("idle"); refreshTracks(); applySpeed(video, speedRef.current); };
     const onCanPlay = () => setStatus((s) => (s === "loading" || s === "buffering" ? "idle" : s));
-
+    const onLoadedMeta = () => { refreshTracks(); applySpeed(video, speedRef.current); };
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
-
+    video.addEventListener("loadedmetadata", onLoadedMeta);
     if (isLikelyHls && Hls.isSupported()) {
       attachHls(video, channel.url);
-      // native playing listener still applies after hls attach
       video.addEventListener("playing", onPlaying);
     } else {
       video.onloadeddata = null;
       video.onerror = null;
       video.src = channel.url;
-      const onLoaded = () => setStatus("idle");
+      const onLoaded = () => { setStatus("idle"); refreshTracks(); applySpeed(video, speedRef.current); };
       const onErr = () => {
         if (retryCountRef.current < 3) {
           retryCountRef.current += 1;
@@ -143,6 +252,7 @@ export function Player({ channel }: PlayerProps) {
             if (!ch || ch.url !== channel.url) return;
             video.src = ch.url;
             void video.play().catch(() => {});
+            applySpeed(video, speedRef.current);
           }, 1000 * retryCountRef.current);
         } else {
           setStatus("error");
@@ -153,11 +263,11 @@ export function Player({ channel }: PlayerProps) {
       video.addEventListener("error", onErr, { once: true });
       void video.play().catch(() => {});
     }
-
     return () => {
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
+      video.removeEventListener("loadedmetadata", onLoadedMeta);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -180,31 +290,55 @@ export function Player({ channel }: PlayerProps) {
   }
 
   return (
-    <div className="player">
-      <video ref={videoRef} autoPlay playsInline className="player-video" />
-      <PlayerControls videoRef={videoRef} channel={channel} onRetry={retry} />
-
+    <div className="player" onDoubleClick={toggleFullscreen}>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        className="player-video"
+        style={
+          {
+            objectFit: fitMode as any,
+            transformOrigin: "center center",
+          } as React.CSSProperties
+        }
+      />
+      <PlayerControls
+        videoRef={videoRef}
+        channel={channel}
+        onRetry={retry}
+        fitMode={fitMode}
+        onCycleFitMode={videoZoom.cycleFitMode}
+        speed={speed}
+        onSpeedChange={saveSpeed}
+        audioTracks={audioTracks}
+        subtitleTracks={subtitleTracks}
+        audioId={audioId}
+        subtitleId={subtitleId}
+        onSwitchAudio={switchAudio}
+        onSwitchSubtitle={switchSubtitle}
+      />
       {status === "loading" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          Tuning {channel.name}…
+          Tuning {channel.name}...
         </div>
       )}
       {status === "buffering" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          Buffering…
+          Buffering...
         </div>
       )}
       {status === "reconnecting" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          Reconnecting… ({retryCountRef.current}/3)
+          Reconnecting... ({retryCountRef.current}/3)
         </div>
       )}
       {status === "error" && error && (
         <div className="player-overlay player-error">
-          <span aria-hidden>⚠</span> {error}
+          <span aria-hidden>!</span> {error}
           <button type="button" className="player-retry" onClick={retry} aria-label="Retry playback">
             Retry
           </button>

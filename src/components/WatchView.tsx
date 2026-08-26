@@ -42,7 +42,7 @@ export function WatchView({ channel, onBack, epgNow, epgNext }: WatchViewProps) 
         </div>
       </header>
       <div className="watch-stage">
-        <Player channel={channel} />
+        <Player channel={channel} onBack={onBack} />
       </div>
     </div>
   );

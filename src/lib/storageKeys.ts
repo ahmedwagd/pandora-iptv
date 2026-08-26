@@ -1,4 +1,4 @@
-export const StorageKeys = {
+﻿export const StorageKeys = {
   xtreamCreds: "xtreamCreds",
   favoriteIds: "favoriteIds",
   watchHistory: "watchHistory",
@@ -7,6 +7,8 @@ export const StorageKeys = {
   playbackSkip: "playbackSkip",
   videoFitMode: "videoFitMode",
   videoZoom: "videoZoom",
+  playbackSpeed: "playbackSpeed",
+  subtitleEnabled: "subtitleEnabled",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys] | string;
