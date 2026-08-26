@@ -12,6 +12,7 @@ import { useFavorites } from "./hooks/useFavorites";
 import { useXtreamCreds } from "./hooks/useXtreamCreds";
 import { useWatchHistory } from "./hooks/useWatchHistory";
 import { useEpg } from "./hooks/useEpg";
+import { useEpgEnabled } from "./hooks/useEpgEnabled";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useBlockBrowserHotkeys } from "./hooks/useBlockBrowserHotkeys";
 import { useOnline } from "./hooks/useOnline";
@@ -112,12 +113,10 @@ export default function App() {
     return () => window.removeEventListener("keydown", onCmd);
   }, []);
 
-  const epgEnabled = sourceKind === "xtream" && contentMode === "live";
-  const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort } = useEpg(
-    xtreamCreds,
-    epgEnabled
-  );
-  const [activeEpgList, setActiveEpgList] = useState<import("./types/epg").EpgProgramme[]>([]);
+  const { enabled: epgPref } = useEpgEnabled();
+  const epgEnabled = epgPref && sourceKind === "xtream" && contentMode === "live";
+  const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort, refresh: refreshEpg } =
+    useEpg(xtreamCreds, epgEnabled);
   const activeEpg = active ? getEpgForChannel(active.id) : undefined;
 
   const [account, setAccount] = useState<XtreamAccount | null>(null);
@@ -136,17 +135,6 @@ export default function App() {
       });
     return () => ctrl.abort();
   }, [sourceKind, xtreamCreds]);
-
-  useEffect(() => {
-    if (!active || !epgEnabled) {
-      setActiveEpgList([]);
-      return;
-    }
-    if (!activeEpg) void fetchEpgShort(active.id);
-    void fetchEpgShort(active.id)
-      .then(setActiveEpgList)
-      .catch(() => {});
-  }, [active, activeEpg, epgEnabled, fetchEpgShort]);
 
   // When active profile changes, reconcile playlist with that profile's creds
   useEffect(() => {
@@ -206,7 +194,7 @@ export default function App() {
         el?.select();
       },
       Escape: () => {
-        if (screen === "watch") setScreen(detailTarget ? "detail" : "browse");
+        if (screen === "watch") handleExitWatch();
         else if (screen === "detail") backToBrowse();
         else if (screen === "browse") goHome();
         else if (screen === "settings") setScreen("home");
@@ -327,6 +315,13 @@ export default function App() {
     [record, setActive, setScreen, detailTarget]
   );
 
+  // Exiting the player returns to the previous screen and forces the EPG
+  // guide to refresh so now/next data on the underlying page is current.
+  const handleExitWatch = useCallback(() => {
+    setScreen(detailTarget ? "detail" : "browse");
+    void refreshEpg(true);
+  }, [setScreen, detailTarget, refreshEpg]);
+
   const openMovieDetail = useCallback(
     (channel: Channel) => {
       setDetailTarget({ kind: "movie", channel });
@@ -424,6 +419,7 @@ export default function App() {
     [removeHistory, clearPosition]
   );
 
+  const [showClearPrompt, setShowClearPrompt] = useState(false);
   const handleClearWatched = useCallback(() => {
     // clear only current contentMode kind
     const ids = history
@@ -586,11 +582,10 @@ export default function App() {
     return (
       <WatchView
         channel={active}
-        onBack={() => setScreen(detailTarget ? "detail" : "browse")}
+        onBack={handleExitWatch}
         epgNow={activeEpg?.now}
         epgNext={activeEpg?.next}
-        epgList={activeEpgList}
-        onFetchEpg={fetchEpgShort}
+        onFetchEpg={epgPref ? fetchEpgShort : undefined}
         profileId={activeId}
       />
     );
@@ -687,7 +682,7 @@ export default function App() {
               {posterCards.length} items
             </span>
             {smartFilter === "continue" && posterCards.length > 0 && (
-              <button type="button" className="browse-clear" onClick={handleClearWatched}>
+              <button type="button" className="browse-clear" onClick={()=> setShowClearPrompt(true)}>
                 Clear all
               </button>
             )}
@@ -746,6 +741,18 @@ export default function App() {
                 <button type="button" className="pc-btn" onClick={() => setPinAsk(null)}>
                   Cancel
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {showClearPrompt && (
+          <div className="cmd-palette-backdrop" style={{alignItems:"center", paddingTop:0}} onClick={() => setShowClearPrompt(false)}>
+            <div className="cmd-palette" role="dialog" aria-modal="true" onClick={(e)=> e.stopPropagation()}>
+              <h3 style={{margin:"8px 0", fontSize:15, fontWeight:700}}>Clear Continue Watching?</h3>
+              <p style={{margin:"0 0 6px", fontSize:13, lineHeight:1.5, opacity:0.85}}>This will remove <strong>{history.filter(h=> (contentMode==="movie"?h.kind==="movie":h.kind==="episode")).length} items</strong> from your Continue Watching and erase saved positions for this profile. This cannot be undone.</p>
+              <div style={{display:"flex", gap:8, marginTop:14}}>
+                <button type="button" className="settings-logout" style={{flex:1, textAlign:"center", justifyContent:"center"}} onClick={()=> { handleClearWatched(); setShowClearPrompt(false); }}>Clear all</button>
+                <button type="button" className="change-source" style={{flex:1}} onClick={()=> setShowClearPrompt(false)}>Cancel</button>
               </div>
             </div>
           </div>

@@ -41,13 +41,7 @@ export function EpgTimeline({
   }, [programmes, now]);
 
   if (programmes.length === 0) {
-    return (
-      <div className="epg-timeline epg-timeline--empty">
-        <span className="epg-empty">
-          No programme data — EPG will populate when the provider sends it.
-        </span>
-      </div>
-    );
+    return null;
   }
   const sorted = [...programmes].sort((a, b) => a.startTime - b.startTime);
 

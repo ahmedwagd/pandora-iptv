@@ -1,7 +1,7 @@
 /* ============================================================
-   Deep Sage — dark-moody theme (the "light" option, made dark).
+   Dusty Sage — mid-tone theme (the "light" option).
    Login · Home · Live sidebar · Browse
-   Forest signal on green-black, hairline edges, no neon glow.
+   Mossy surfaces, brighter forest signal, soft shadow.
    Signature: SMPTE color-bar mark + ledger grain (index.css).
    ============================================================ */
 
@@ -43,21 +43,21 @@
 
 /* ============================ LOGIN ============================ */
 [data-theme="light"] .login-error {
-  background: #321c1b;
-  border-color: rgba(255, 180, 171, 0.22);
+  background: #3f2b28;
+  border-color: rgba(255, 180, 171, 0.25);
   color: #ffb4ab;
 }
 [data-theme="light"] .login-form input::placeholder {
-  color: #6f7f76;
+  color: #93a69a;
 }
 [data-theme="light"] .login-connect:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(48, 178, 134, 0.28);
+  box-shadow: 0 6px 20px rgba(61, 209, 156, 0.3);
 }
 [data-theme="light"] .login-secondary {
   color: var(--on-surface);
 }
 [data-theme="light"] .login-aside {
-  background: linear-gradient(180deg, #1b2620 0%, #101814 100%);
+  background: linear-gradient(180deg, #405148 0%, #2c3a33 100%);
 }
 [data-theme="light"] .login-main {
   background: var(--background);
@@ -69,11 +69,11 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
 [data-theme="light"] .home-tile::after {
-  color: rgba(220, 231, 223, 0.05);
+  color: rgba(233, 240, 236, 0.05);
 }
 [data-theme="light"] .home-tile:hover {
   border-color: var(--tile-accent, var(--signal));
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
 }
 [data-theme="light"] .home-tile:focus-visible {
   border-color: var(--tile-accent, var(--signal));
@@ -86,7 +86,7 @@
   color: var(--tile-accent, var(--signal));
 }
 [data-theme="light"] .home-footer {
-  background: rgba(10, 16, 13, 0.6);
+  background: rgba(38, 50, 44, 0.6);
   border-top: 1px solid var(--border);
 }
 [data-theme="light"] .home-footer-profile span[aria-hidden] {
@@ -106,18 +106,18 @@
 [data-theme="light"] .home-settings:hover,
 [data-theme="light"] .home-logout:hover {
   background: var(--surface-high);
-  border-color: rgba(48, 178, 134, 0.3);
+  border-color: rgba(61, 209, 156, 0.3);
 }
 
 /* ======================= LIVE SIDEBAR ========================= */
 [data-theme="light"] .filters {
-  background: rgba(10, 16, 13, 0.55);
+  background: rgba(38, 50, 44, 0.55);
 }
 [data-theme="light"] .filters input::placeholder {
-  color: #6f7f76;
+  color: #93a69a;
 }
 [data-theme="light"] .sidebar-header {
-  background: rgba(10, 16, 13, 0.5);
+  background: rgba(38, 50, 44, 0.5);
 }
 [data-theme="light"] .smart-filter:hover {
   background: var(--surface-high);
@@ -128,12 +128,12 @@
 [data-theme="light"] .channel-row:hover {
   background: var(--surface-high);
   border-color: var(--border);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
   transform: none;
 }
 [data-theme="light"] .channel-row.active {
   background: var(--surface-tint);
-  border-color: rgba(48, 178, 134, 0.35);
+  border-color: rgba(61, 209, 156, 0.35);
   box-shadow: inset 2px 0 0 var(--signal);
 }
 
@@ -142,7 +142,7 @@
   background: var(--surface-high);
 }
 [data-theme="light"] .filter-search input::placeholder {
-  color: #6f7f76;
+  color: #93a69a;
 }
 [data-theme="light"] .browse-clear:hover {
   color: #ffb4ab;
@@ -156,13 +156,13 @@
 }
 [data-theme="light"] .poster-card-img {
   box-shadow:
-    0 4px 14px rgba(0, 0, 0, 0.45),
-    0 1px 4px rgba(0, 0, 0, 0.3);
+    0 4px 14px rgba(0, 0, 0, 0.35),
+    0 1px 4px rgba(0, 0, 0, 0.22);
 }
 [data-theme="light"] .poster-card:hover .poster-card-img {
   box-shadow:
-    0 14px 32px rgba(0, 0, 0, 0.5),
-    0 4px 10px rgba(0, 0, 0, 0.35);
+    0 14px 32px rgba(0, 0, 0, 0.4),
+    0 4px 10px rgba(0, 0, 0, 0.28);
 }
 [data-theme="light"] .poster-card-title {
   color: var(--on-surface);
@@ -173,12 +173,12 @@
 
 /* — Command palette (surfaces inside Browse) — */
 [data-theme="light"] .cmd-palette-backdrop {
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.45);
 }
 [data-theme="light"] .cmd-palette {
   background: var(--surface-container);
   border: 1px solid var(--border);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
 }
 [data-theme="light"] .cmd-palette input {
   background: var(--surface-low);
@@ -191,7 +191,7 @@
 [data-theme="light"] .cmd-item.active,
 [data-theme="light"] .cmd-item:hover {
   background: var(--surface-tint);
-  border-color: rgba(48, 178, 134, 0.35);
+  border-color: rgba(61, 209, 156, 0.35);
   color: var(--on-surface);
 }
 [data-theme="light"] .change-source {
@@ -201,6 +201,6 @@
 }
 [data-theme="light"] .change-source:hover {
   background: var(--surface-high);
-  border-color: rgba(48, 178, 134, 0.3);
+  border-color: rgba(61, 209, 156, 0.3);
   color: var(--on-surface);
 }

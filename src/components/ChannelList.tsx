@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { useEpgReminders } from "../hooks/useEpgReminders";
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
@@ -35,6 +35,21 @@ function isResumableRow(pos: number, dur: number): boolean {
   const pct = pos / dur;
   return pct > 0.01 && pct < 0.985;
 }
+function fmtClock(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+function progRange(p: EpgProgramme): string {
+  return `${fmtClock(p.startTime)}–${fmtClock(p.stopTime)}`;
+}
+function progPct(p: EpgProgramme, nowMs: number): number {
+  const span = p.stopTime - p.startTime;
+  if (!Number.isFinite(span) || span <= 0) return 0;
+  return Math.max(0, Math.min(1, (nowMs - p.startTime) / span));
+}
 const ChannelRow = memo(function ChannelRow({
   ch,
   idx,
@@ -47,6 +62,7 @@ const ChannelRow = memo(function ChannelRow({
   profileId,
   hasReminder,
   onToggleReminder,
+  now,
 }: {
   ch: Channel;
   idx: number;
@@ -59,6 +75,7 @@ const ChannelRow = memo(function ChannelRow({
   profileId?: string | null;
   hasReminder?: (id: string, start: number) => boolean;
   onToggleReminder?: (ch: Channel, prog: EpgProgramme) => void;
+  now: number;
 }) {
   const isActive = ch.id === activeId;
   const isFav = favoriteIds.has(ch.id);
@@ -93,18 +110,52 @@ const ChannelRow = memo(function ChannelRow({
         placeholderClassName="channel-logo-placeholder"
         fallback={ch.name[0] ?? "?"}
       />
-      <span className="channel-name-wrap">
-        <span className="channel-name">{ch.name}</span>
+      <div className="ch-main">
+        <div className="ch-line">
+          <span className="channel-name">{ch.name}</span>
+        </div>
         {resumable && (
-          <span className="channel-epg channel-epg--resume">
+          <span className="ch-resume">
             ↺ Resume {fmtResumeRow(saved!.position)} / {fmtResumeRow(saved!.duration)}
           </span>
         )}
-        {!resumable && epg?.now && <span className="channel-epg">Now: {epg.now.title}</span>}
-        {!resumable && epg?.next && !epg?.now && (
-          <span className="channel-epg channel-epg--next">Next: {epg.next.title}</span>
+        {!resumable && epg?.now && (
+          <>
+            <div className="ch-now">
+              <span className="ch-now-tag" aria-hidden>
+                <span className="ch-now-dot" />
+                NOW
+              </span>
+              <span className="ch-now-time">{progRange(epg.now)}</span>
+              <span className="ch-now-title" title={epg.now.title}>
+                {epg.now.title}
+              </span>
+            </div>
+            <div className="ch-progress" aria-hidden>
+              <span
+                className="ch-progress-fill"
+                style={{ width: `${progPct(epg.now, now) * 100}%` }}
+              />
+            </div>
+            {epg?.next && (
+              <div className="ch-next">
+                <span className="ch-next-title" title={epg.next.title}>
+                  {epg.next.title}
+                </span>
+                <span className="ch-next-time">{fmtClock(epg.next.startTime)}</span>
+              </div>
+            )}
+          </>
         )}
-      </span>
+        {!resumable && !epg?.now && epg?.next && (
+          <div className="ch-next">
+            <span className="ch-next-title" title={epg.next.title}>
+              {epg.next.title}
+            </span>
+            <span className="ch-next-time">{fmtClock(epg.next.startTime)}</span>
+          </div>
+        )}
+      </div>
       {showFavorite && (
         <button
           type="button"
@@ -138,6 +189,11 @@ export function ChannelList({
   const [group, setGroup] = useState("All");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [epgSearch, setEpgSearch] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
   const {
     has: hasReminder,
     add: addReminder,
@@ -266,6 +322,7 @@ export function ChannelList({
               getEpgForChannel={getEpgForChannel}
               profileId={profileId}
               hasReminder={hasReminder}
+              now={now}
               onToggleReminder={(channel, prog) => {
                 if (hasReminder(channel.id, prog.startTime))
                   removeReminder(`${channel.id}::${prog.startTime}`);

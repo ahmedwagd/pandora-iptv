@@ -190,8 +190,12 @@ export function PlayerControls({
   const { skipDuration } = useSkipDuration();
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(1);
-  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(()=> {
+    try { const v=Number(localStorage.getItem("panora:volume")); if(Number.isFinite(v) && v>=0 && v<=1) return v; } catch {} return 1;
+  });
+  const [muted, setMuted] = useState(()=> {
+    try { return localStorage.getItem("panora:muted")==="1"; } catch {} return false;
+  });
   const [paused, setPaused] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPiP, setIsPiP] = useState(false);
@@ -227,6 +231,15 @@ export function PlayerControls({
       scheduleHide();
     }
   }, [visible, scheduleHide]);
+
+  // persist volume
+  useEffect(()=> { try { localStorage.setItem("panora:volume", String(volume)); } catch {} }, [volume]);
+  useEffect(()=> { try { localStorage.setItem("panora:muted", muted?"1":"0"); } catch {} }, [muted]);
+  useEffect(()=> {
+    const v=videoRef.current; if(!v) return;
+    try { const sv=Number(localStorage.getItem("panora:volume")); if(Number.isFinite(sv)) v.volume=sv; } catch {}
+    try { const sm=localStorage.getItem("panora:muted")==="1"; v.muted=sm; if(sm) setMuted(true); } catch {}
+  }, [videoRef]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -692,6 +705,7 @@ export function PlayerControls({
                 step={0.05}
                 value={muted ? 0 : volume}
                 onChange={handleVolume}
+                style={{ background: `linear-gradient(to right, var(--signal) 0%, var(--signal) ${(muted?0:volume)*100}%, rgba(255,255,255,0.18) ${(muted?0:volume)*100}%, rgba(255,255,255,0.18) 100%)` } as React.CSSProperties}
               />
             </div>
 

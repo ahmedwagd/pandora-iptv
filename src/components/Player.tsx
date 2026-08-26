@@ -5,6 +5,7 @@ import { ColorBar } from "./ColorBar";
 import { PlayerControls } from "./player/PlayerControls";
 import { ResumePrompt } from "./player/ResumePrompt";
 import { useVideoZoom } from "../hooks/useVideoZoom";
+import { useSkipDuration } from "../hooks/useSkipDuration";
 import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 import { usePlaybackResume } from "../hooks/usePlaybackResume";
 
@@ -32,6 +33,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const videoZoom = useVideoZoom();
   const fitMode = (fitModeProp as any) ?? videoZoom.fitMode;
   const { speed, saveSpeed } = usePlaybackSpeed();
+  const { skipDuration } = useSkipDuration();
   const speedRef = useRef(speed);
   useEffect(() => {
     speedRef.current = speed;
@@ -209,6 +211,37 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       }
     }
   }, []);
+
+  const handleSeek = useCallback((delta: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const dur = v.duration;
+    const isLive = channelRef.current?.kind === "live" || !Number.isFinite(dur) || dur === 0 || dur === Infinity;
+    // show quick feedback
+    const target = document.createElement("div");
+    target.className = "dbl-seek-hint";
+    target.textContent = (delta > 0 ? "+" : "") + delta + "s";
+    target.style.position = "absolute";
+    target.style.top = "50%";
+    target.style.left = delta > 0 ? "78%" : "22%";
+    target.style.transform = "translate(-50%,-50%)";
+    target.style.background = "rgba(0,0,0,0.72)";
+    target.style.color = "#fff";
+    target.style.padding = "8px 14px";
+    target.style.borderRadius = "9999px";
+    target.style.fontFamily = "var(--font-mono)";
+    target.style.fontSize = "14px";
+    target.style.fontWeight = "700";
+    target.style.backdropFilter = "blur(6px)";
+    target.style.pointerEvents = "none";
+    target.style.zIndex = "6";
+    target.style.animation = "seekHint 520ms ease";
+    const playerEl = v.parentElement;
+    if (playerEl) { playerEl.appendChild(target); window.setTimeout(()=> target.remove(), 560); }
+    if (isLive) { v.currentTime = Math.max(0, v.currentTime + delta); return; }
+    const nd = Number.isFinite(dur) && dur>0 ? Math.max(0, Math.min(dur, v.currentTime + delta)) : v.currentTime+delta;
+    v.currentTime = nd;
+  }, [skipDuration]);
 
   const toggleFullscreen = useCallback(async () => {
     const v = videoRef.current;
@@ -468,8 +501,26 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     );
   }
 
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const v = videoRef.current;
+    if (!v) { void toggleFullscreen(); return; }
+    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const w = rect.width || 1;
+    // ignore if controls bar area (bottom 88px) — let controls handle fullscreen
+    const y = e.clientY - rect.top;
+    if (y > rect.height - 96) { void toggleFullscreen(); return; }
+    // near top bar also fullscreen
+    if (y < 56) { void toggleFullscreen(); return; }
+    const isLive = channelRef.current?.kind === "live";
+    const pct = x / w;
+    if (!isLive && pct < 0.35) { handleSeek(-skipDuration); }
+    else if (pct > 0.65) { handleSeek(skipDuration); }
+    else { void toggleFullscreen(); }
+  }, [toggleFullscreen, handleSeek, skipDuration]);
+
   return (
-    <div className="player" onDoubleClick={toggleFullscreen}>
+    <div className="player" onDoubleClick={handleDoubleClick}>
       <video
         ref={videoRef}
         autoPlay

@@ -1,57 +1,104 @@
-﻿import type { Profile } from "../types/profile";
+﻿import { useState } from "react";
+import type { Profile } from "../types/profile";
 import type { XtreamAccount } from "../lib/xtream";
 import { ProfileSwitcher } from "./ProfileSwitcher";
-import { useState } from "react";
+import { ColorBar } from "./ColorBar";
 import { useSkipDuration } from "../hooks/useSkipDuration";
 import { useVideoZoom, FIT_MODES } from "../hooks/useVideoZoom";
 import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 import { useTheme } from "../hooks/useTheme";
 import { useParental } from "../hooks/useParental";
-import { strings } from "../i18n";
+import { strings, type StringKey } from "../i18n";
 import { useLang } from "../hooks/useLang";
+import { useEpgEnabled } from "../hooks/useEpgEnabled";
+
+const GROUPS = [
+  { id: "profiles", labelKey: "profiles" },
+  { id: "account", labelKey: "account" },
+  { id: "appearance", labelKey: "appearance" },
+  { id: "epg", labelKey: "epgGuide" },
+  { id: "playback", labelKey: "playback" },
+  { id: "video", labelKey: "video" },
+  { id: "parental", labelKey: "parental" },
+] as const;
+type GroupId = (typeof GROUPS)[number]["id"];
+type Strings = Record<StringKey, string>;
 
 function ParentalSettings() {
   const p = useParental();
+  const { lang } = useLang();
+  const s = strings[lang];
   const [newPin, setNewPin] = useState(p.pin ?? "");
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "grid", gap: 6 }}>
+      <div className="set-row">
+        <span className="set-row-label">{s.pinCode}</span>
+        <span className="set-row-leader" />
+        <span className="set-row-value">{p.pin ? s.lockedValue : s.unsetValue}</span>
+      </div>
+      <div className="set-opts" style={{ alignItems: "center" }}>
         <input
           type="password"
-          placeholder="Set 4-digit PIN"
+          inputMode="numeric"
+          placeholder={s.pinPlaceholder}
+          maxLength={4}
           value={newPin}
-          onChange={(e) => setNewPin(e.target.value)}
-          style={{
-            flex: 1,
-            background: "rgba(255,255,255,0.06)",
-            border: "1px solid rgba(255,255,255,0.10)",
-            color: "#e8ece9",
-            borderRadius: 8,
-            padding: "6px 10px",
-          }}
+          onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+          aria-label={s.pinPlaceholder}
+          className="set-input"
         />
-        <button type="button" className="smart-filter" onClick={() => p.setPin(newPin || null)}>
-          {p.pin ? "Update" : "Set"}
+        <button type="button" className="set-opt" onClick={() => p.setPin(newPin || null)}>
+          {p.pin ? s.updateLabel : s.setLabel}
         </button>
         {p.pin && (
           <button
             type="button"
-            className="pc-btn"
+            className="set-opt set-opt--danger"
             onClick={() => {
               p.setPin(null);
               setNewPin("");
             }}
           >
-            Clear
+            {s.clearLabel}
           </button>
         )}
       </div>
-      {p.locked.length > 0 && (
-        <div style={{ fontSize: 11, opacity: 0.7 }}>Locked: {p.locked.join(", ")}</div>
-      )}
+      {p.locked.length > 0 && <p className="set-hint">{s.lockedPrefix} {p.locked.join(", ")}</p>}
     </div>
   );
 }
+
+function fmtDaysLeft(ts: number, s: Strings): string {
+  const days = Math.ceil((ts - Date.now()) / 86400000);
+  if (days < 0) return s.expired;
+  if (days === 0) return s.today;
+  return `${days} ${days === 1 ? s.day : s.days}`;
+}
+
+function statusText(raw: string | undefined, isAr: boolean, s: Strings): string {
+  if (!raw) return "—";
+  const low = raw.toLowerCase();
+  if (low.includes("activ")) return isAr ? "نشط" : "ACTIVE";
+  if (low.includes("expir")) return s.expired;
+  if (low.includes("ban")) return isAr ? "محظور" : "BANNED";
+  if (low.includes("disabl")) return isAr ? "معطل" : "DISABLED";
+  return isAr ? raw : raw.toUpperCase();
+}
+
+const fitLabel = (mode: string, s: Strings): string => {
+  switch (mode) {
+    case "contain":
+      return s.fitFit;
+    case "cover":
+      return s.fitCover;
+    case "fill":
+      return s.fitFill;
+    case "scale-down":
+      return s.fitSmall;
+    default:
+      return "1:1";
+  }
+};
 
 interface SettingsProps {
   profiles: Profile[];
@@ -82,200 +129,336 @@ export function Settings({
   const { speed, saveSpeed, SPEED_OPTIONS } = usePlaybackSpeed();
   const { theme, setTheme } = useTheme();
   const { lang, setLang } = useLang();
+  const { enabled: epgPref, setEnabled: setEpgPref } = useEpgEnabled();
   const s = strings[lang];
+  const isAr = lang === "ar";
+  const [group, setGroup] = useState<GroupId>("profiles");
+
+  const expTs = account?.expTimestamp;
+  const expDate = account?.expDateFormatted;
+  const daysLeft = expTs ? Math.ceil((expTs - Date.now()) / 86400000) : null;
+  const expWarn = daysLeft !== null && daysLeft >= 0 && daysLeft <= 7;
+  const expDanger = daysLeft !== null && daysLeft < 0;
+  const connTxt = `${account?.activeConnections ?? "—"} / ${account?.maxConnections ?? "—"}`;
+  const signalTxt = statusText(account?.status ?? undefined, isAr, s);
+  const expTxt = account
+    ? `${expDate ?? s.noExpiration}${expTs ? ` · ${fmtDaysLeft(expTs, s)}` : ""}${account.isTrial ? ` · ${s.trial}` : ""}`
+    : "—";
+
+  const label = (g: GroupId) => s[GROUPS.find((x) => x.id === g)!.labelKey];
+
   return (
     <div className="settings">
       <header className="settings-header">
-        <button type="button" className="detail-back" onClick={onBack} aria-label="Back">
-          Back
+        <button type="button" className="detail-back" onClick={onBack} aria-label={s.back}>
+          ←
         </button>
-        <h1 className="settings-title">{s.settings}</h1>
+        <div className="set-crumb">
+          <span className="set-crumb-static">{s.setup}</span>
+          <span className="set-crumb-sep" aria-hidden>
+            ▸
+          </span>
+          <span className="set-crumb-group">{label(group)}</span>
+        </div>
+        <div className="set-onair" aria-hidden>
+          <span className="signal-dot" />
+          <span>{s.onAir}</span>
+        </div>
       </header>
 
-      <div className="settings-body">
-        <section className="settings-section">
-          <h3 className="settings-section-title">{s.language}</h3>
-          <div className="settings-row" style={{display:"flex", gap:8}}>
-            {( (["en","ar"] as const).map(l=> <button key={l} type="button" className={lang===l?"smart-filter active":"smart-filter"} onClick={()=> setLang(l)} aria-pressed={lang===l}>{l==="en"?"English":"العربية"}</button> ))}
-          </div>
-          <p style={{fontSize:11, opacity:0.6, marginTop:6}}>Switches app to {`{lang}`} — RTL for Arabic (affects entire app dir).</p>
-        </section>
-        <section className="settings-section">
-          <h3 className="settings-section-title">{s.appearance}</h3>
-          <p style={{ fontSize: 11, opacity: 0.6 }}>Tip: Ctrl+K palette · ? help</p>
-          <div className="settings-row" style={{ display: "flex", gap: 8 }}>
-            {(["dark", "light", "system"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                className={theme === t ? "smart-filter active" : "smart-filter"}
-                onClick={() => setTheme(t)}
-                aria-pressed={theme === t}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        </section>
-        <section className="settings-section">
-          <h2 className="settings-section-title">{s.profiles}</h2>
-          <p className="settings-section-desc">
-            Switch between saved accounts. Each profile keeps its own favorites and watch history.
-          </p>
-          <div className="settings-card">
-            <ProfileSwitcher
-              profiles={profiles}
-              activeId={activeId}
-              onSwitch={onSwitch}
-              onCreate={onCreate}
-              onDelete={onDelete}
-            />
-            {active && <p className="settings-active">Active: {active.name}</p>}
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h2 className="settings-section-title">{s.account}</h2>
-          <div className="settings-card settings-account">
-            <div className="settings-row">
-              <span className="settings-label">Username</span>
-              <span className="settings-value">{account?.username ?? username ?? "-"}</span>
-            </div>
-            <div className="settings-row">
-              <span className="settings-label">Status</span>
-              <span className="settings-value">{account?.status ?? "-"}</span>
-            </div>
-            <div className="settings-row">
-              <span className="settings-label">Expiration</span>
-              <span
-                className={`settings-value ${account?.expTimestamp && account.expTimestamp <= Date.now() + 7 * 86400000 ? "settings-value--warn" : ""}`}
-              >
-                {account?.expDateFormatted ?? "No expiration"}
-                {account?.isTrial && " - Trial"}
-              </span>
-            </div>
-            {account?.maxConnections && (
-              <div className="settings-row">
-                <span className="settings-label">Connections</span>
-                <span className="settings-value">
-                  {account.activeConnections ?? "-"} / {account.maxConnections}
-                </span>
-              </div>
-            )}
-            {account?.createdAt && (
-              <div className="settings-row">
-                <span className="settings-label">Created</span>
-                <span className="settings-value">
-                  {new Date(Number(account.createdAt) * 1000).toLocaleDateString()}
-                </span>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h2 className="settings-section-title">{s.playback}</h2>
-          <p className="settings-section-desc">
-            Skip, speed, and subtitle defaults. Changes apply to the player immediately.
-          </p>
-          <div className="settings-card settings-playback">
-            <div className="settings-row">
-              <span className="settings-label">Skip duration</span>
-              <span className="settings-value">{skipDuration}s</span>
-            </div>
-            <div className="settings-skip-pills">
-              {[5, 10, 15, 30].map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={`settings-skip-pill ${skipDuration === v ? "active" : ""}`}
-                  onClick={() => setSkipDuration(v)}
-                >
-                  {v}s
-                </button>
-              ))}
-            </div>
-            <label className="settings-skip-custom">
-              <span className="settings-label">Custom (5-60s)</span>
-              <input
-                type="number"
-                min={5}
-                max={60}
-                step={1}
-                value={skipDuration}
-                onChange={(e) => setSkipDuration(Number(e.target.value))}
-                className="settings-skip-input"
-              />
-            </label>
-            <div className="settings-row" style={{ marginTop: 12 }}>
-              <span className="settings-label">Playback speed</span>
-              <span className="settings-value">{speed}x</span>
-            </div>
-            <div className="settings-skip-pills">
-              {SPEED_OPTIONS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  className={`settings-skip-pill ${speed === s ? "active" : ""}`}
-                  onClick={() => saveSpeed(s)}
-                >
-                  {s}x
-                </button>
-              ))}
-            </div>
-            <p className="settings-hint">
-              Default is 1x. Use , and . keys to step speed, or CC/A buttons for subs/audio.
-            </p>
-          </div>
-        </section>
-
-        <section className="settings-section">
-          <h2 className="settings-section-title">{s.video}</h2>
-          <p className="settings-section-desc">
-            Adjust how video fills the player. Fit keeps whole picture, Cover fills and crops, Fill
-            stretches. Zoom 50% to 200%.
-          </p>
-          <div className="settings-card settings-playback">
-            <div className="settings-row">
-              <span className="settings-label">Fit mode</span>
-              <span className="settings-value">
-                {FIT_MODES.find((f) => f.mode === fitMode)?.label ?? fitMode}
-              </span>
-            </div>
-            <div className="settings-skip-pills">
-              {FIT_MODES.map((f) => (
-                <button
-                  key={f.mode}
-                  type="button"
-                  className={`settings-skip-pill ${fitMode === f.mode ? "active" : ""}`}
-                  onClick={() => saveFitMode(f.mode)}
-                  title={f.mode}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            <p className="settings-hint">Z cycles fit mode. Saved automatically.</p>
-          </div>
-        </section>
-        <section className="settings-section">
-          <h3 className="settings-section-title">{s.parental}</h3>
-          <div className="settings-card">
-            <ParentalSettings />
-          </div>
-        </section>
-        <section className="settings-section">
-          <h2 className="settings-section-title">{s.session}</h2>
-          <div className="settings-card">
-            <button type="button" className="settings-logout" onClick={onDisconnect}>
-              Exit and logout current profile
+      <div className="settings-main">
+        <nav className="set-rail" aria-label="Settings sections">
+          {GROUPS.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className={`set-rail-item ${group === g.id ? "active" : ""}`}
+              onClick={() => setGroup(g.id)}
+              aria-pressed={group === g.id}
+            >
+              {label(g.id)}
             </button>
-            <p className="settings-hint">
-              This clears the saved credentials for the active profile only.
-            </p>
-          </div>
-        </section>
+          ))}
+        </nav>
+
+        <div className="set-panel">
+          {group === "profiles" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.profiles}</h2>
+                <p className="set-group-desc">{s.profilesDesc}</p>
+              </header>
+              <div className="set-card">
+                <ProfileSwitcher
+                  profiles={profiles}
+                  activeId={activeId}
+                  onSwitch={onSwitch}
+                  onCreate={onCreate}
+                  onDelete={onDelete}
+                />
+                <div className="set-row">
+                  <span className="set-row-label">{s.activeLabel}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{active?.name ?? "—"}</span>
+                </div>
+                <div className="set-row">
+                  <span className="set-row-label">{s.signOut}</span>
+                  <span className="set-row-leader" />
+                  <button type="button" className="set-btn set-btn--danger" onClick={onDisconnect}>
+                    {s.signOutBtn}
+                  </button>
+                </div>
+                <p className="set-hint">{s.signOutHint}</p>
+              </div>
+            </section>
+          )}
+
+          {group === "account" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.account}</h2>
+                <p className="set-group-desc">{s.accountDesc}</p>
+              </header>
+              <div className="set-card">
+                <div className="set-row">
+                  <span className="set-row-label">{s.username}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{account?.username ?? username ?? "—"}</span>
+                </div>
+                <div className="set-row">
+                  <span className="set-row-label">{s.status}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{signalTxt}</span>
+                </div>
+                <div className="set-row">
+                  <span className="set-row-label">{s.connections}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{connTxt}</span>
+                </div>
+                <div className={`set-row ${expWarn ? "warn" : ""} ${expDanger ? "danger" : ""}`}>
+                  <span className="set-row-label">{s.expires}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{expTxt}</span>
+                </div>
+                {account?.createdAt && (
+                  <div className="set-row">
+                    <span className="set-row-label">{s.created}</span>
+                    <span className="set-row-leader" />
+                    <span className="set-row-value">
+                      {new Date(Number(account.createdAt) * 1000).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {group === "appearance" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.appearance}</h2>
+                <p className="set-group-desc">{s.appearanceDesc}</p>
+              </header>
+              <div className="set-card">
+                <div className="set-row">
+                  <span className="set-row-label">{s.language}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{lang === "en" ? s.langEn : s.langAr}</span>
+                </div>
+                <div className="set-opts">
+                  {(["en", "ar"] as const).map((l) => (
+                    <button
+                      key={l}
+                      type="button"
+                      className={`set-opt ${lang === l ? "active" : ""}`}
+                      onClick={() => setLang(l)}
+                      aria-pressed={lang === l}
+                    >
+                      {l === "en" ? s.langEn : s.langAr}
+                    </button>
+                  ))}
+                </div>
+                <div className="set-row">
+                  <span className="set-row-label">{s.theme}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">
+                    {theme === "dark"
+                      ? s.themeDark
+                      : theme === "light"
+                        ? s.themeLight
+                        : s.themeSystem}
+                  </span>
+                </div>
+                <div className="set-opts">
+                  {(["dark", "light", "system"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`set-opt ${theme === t ? "active" : ""}`}
+                      onClick={() => setTheme(t)}
+                      aria-pressed={theme === t}
+                    >
+                      {t === "dark" ? s.themeDark : t === "light" ? s.themeLight : s.themeSystem}
+                    </button>
+                  ))}
+                </div>
+                <p className="set-hint">{s.appearanceHint}</p>
+              </div>
+            </section>
+          )}
+
+          {group === "epg" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.epgGuide}</h2>
+                <p className="set-group-desc">{s.epgDesc}</p>
+              </header>
+              <div className="set-card">
+                <div className="set-row">
+                  <span className="set-row-label">{s.programmeGuide}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{epgPref ? s.onValue : s.offValue}</span>
+                  <button
+                    type="button"
+                    className={`set-switch ${epgPref ? "on" : ""}`}
+                    onClick={() => setEpgPref(!epgPref)}
+                    aria-pressed={epgPref}
+                    aria-label={s.programmeGuide}
+                  >
+                    <span className="set-switch-knob" />
+                  </button>
+                </div>
+                <p className="set-hint">{s.epgHint}</p>
+              </div>
+            </section>
+          )}
+
+          {group === "playback" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.playback}</h2>
+                <p className="set-group-desc">{s.playbackDesc}</p>
+              </header>
+              <div className="set-card">
+                <div className="set-row">
+                  <span className="set-row-label">{s.skipDuration}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">
+                    {skipDuration}
+                    {isAr ? "ث" : "S"}
+                  </span>
+                </div>
+                <div className="set-opts">
+                  {[5, 10, 15, 30].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`set-opt ${skipDuration === v ? "active" : ""}`}
+                      onClick={() => setSkipDuration(v)}
+                    >
+                      {v}s
+                    </button>
+                  ))}
+                </div>
+                <label className="set-skip-custom">
+                  <span className="set-row-label">{s.customSkip}</span>
+                  <input
+                    type="number"
+                    min={5}
+                    max={60}
+                    step={1}
+                    value={skipDuration}
+                    onChange={(e) => setSkipDuration(Number(e.target.value))}
+                    className="set-input"
+                  />
+                </label>
+                <div className="set-row">
+                  <span className="set-row-label">{s.playbackSpeed}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">{speed.toFixed(2)}×</span>
+                </div>
+                <div className="set-opts">
+                  {SPEED_OPTIONS.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`set-opt ${speed === v ? "active" : ""}`}
+                      onClick={() => saveSpeed(v)}
+                    >
+                      {v}x
+                    </button>
+                  ))}
+                </div>
+                <p className="set-hint">{s.playbackHint}</p>
+              </div>
+            </section>
+          )}
+
+          {group === "video" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.video}</h2>
+                <p className="set-group-desc">{s.videoDesc}</p>
+              </header>
+              <div className="set-card">
+                <div className="set-row">
+                  <span className="set-row-label">{s.fitMode}</span>
+                  <span className="set-row-leader" />
+                  <span className="set-row-value">
+                    {fitLabel(FIT_MODES.find((f) => f.mode === fitMode)?.mode ?? "contain", s)}
+                  </span>
+                </div>
+                <div className="set-opts">
+                  {FIT_MODES.map((f) => (
+                    <button
+                      key={f.mode}
+                      type="button"
+                      className={`set-opt ${fitMode === f.mode ? "active" : ""}`}
+                      onClick={() => saveFitMode(f.mode)}
+                      title={f.mode}
+                    >
+                      {fitLabel(f.mode, s)}
+                    </button>
+                  ))}
+                </div>
+                <p className="set-hint">{s.videoHint}</p>
+              </div>
+            </section>
+          )}
+
+          {group === "parental" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.parental}</h2>
+                <p className="set-group-desc">{s.parentalDesc}</p>
+              </header>
+              <div className="set-card">
+                <ParentalSettings />
+              </div>
+            </section>
+          )}
+        </div>
       </div>
+
+      <footer className="set-status">
+        <ColorBar className="colorbar--loading" />
+        <div className="set-status-row">
+          <span className="set-status-seg">
+            {s.connSeg} <b>▸</b> {connTxt}
+          </span>
+          <span className="set-status-seg">
+            {s.signalSeg} <b>▸</b> {signalTxt}
+          </span>
+          <span
+            className={`set-status-seg ${expWarn ? "warn" : ""} ${expDanger ? "danger" : ""}`}
+          >
+            {s.expires} <b>▸</b> {expTxt}
+          </span>
+          <span className="set-status-seg">
+            {s.frameSeg} <b>▸</b> 59.94 HZ
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

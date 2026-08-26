@@ -64,56 +64,57 @@
     new code should prefer Tailwind utilities.
     ============================================================ */
 /* ============================================================
-   Deep Sage — the "light" theme is dark-moody sage, not paper.
-   Forest signal on green-black. Same broadcast identity as :root
-   but cooler/earthier. `html[data-theme="light"]` outranks `:root`.
+   Dusty Sage — mid-tone register for the "light" theme.
+   Lighter than green-black, darker than paper: mossy surfaces,
+   soft sage text, brighter forest signal. Same broadcast identity.
+   `html[data-theme="light"]` outranks `:root`.
    ============================================================ */
 html[data-theme="light"] {
-  --background: #0e1512;
-  --surface: #141d19;
-  --surface-dim: #0e1512;
-  --surface-bright: #232d28;
-  --surface-lowest: #0a100d;
-  --surface-low: #161f1b;
-  --surface-container: #1b2620;
-  --surface-high: #232e28;
-  --surface-highest: #2c3831;
-  --surface-variant: #2c3831;
-  --surface-soft: #1b2620;
-  --panel: #141d19;
-  --panel-2: #1b2620;
-  --raised: #232e28;
-  --edge: #33453c;
-  --hairline: rgba(220, 231, 223, 0.07);
-  --border: rgba(220, 231, 223, 0.09);
-  --outline: #7c8b82;
-  --outline-variant: #33453c;
+  --background: #2c3a33;
+  --surface: #35463d;
+  --surface-dim: #2c3a33;
+  --surface-bright: #45574d;
+  --surface-lowest: #26322c;
+  --surface-low: #37483f;
+  --surface-container: #405148;
+  --surface-high: #485a50;
+  --surface-highest: #516459;
+  --surface-variant: #485a50;
+  --surface-soft: #405148;
+  --panel: #35463d;
+  --panel-2: #405148;
+  --raised: #485a50;
+  --edge: #5a6d62;
+  --hairline: rgba(233, 240, 236, 0.08);
+  --border: rgba(233, 240, 236, 0.1);
+  --outline: #97a89d;
+  --outline-variant: #51645a;
 
-  --on-surface: #dce7df;
-  --on-surface-variant: #a9b8af;
-  --on-background: #dce7df;
-  --inverse-surface: #dce7df;
-  --inverse-on-surface: #16211b;
-  --ink: #dce7df;
-  --muted: #a9b8af;
-  --dim: #7c8b82;
+  --on-surface: #e9f0ec;
+  --on-surface-variant: #b8c6bd;
+  --on-background: #e9f0ec;
+  --inverse-surface: #e9f0ec;
+  --inverse-on-surface: #26322c;
+  --ink: #e9f0ec;
+  --muted: #b8c6bd;
+  --dim: #93a69a;
 
-  --primary: #30b286;
-  --on-primary: #062b1c;
-  --primary-container: #30b286;
-  --on-primary-container: #062b1c;
-  --signal: #30b286;
-  --signal-deep: #22815b;
-  --signal-glow: rgba(48, 178, 134, 0.22);
-  --surface-tint: rgba(48, 178, 134, 0.14);
+  --primary: #3dd19c;
+  --on-primary: #0a2b1e;
+  --primary-container: #3dd19c;
+  --on-primary-container: #0a2b1e;
+  --signal: #3dd19c;
+  --signal-deep: #28a274;
+  --signal-glow: rgba(61, 209, 156, 0.22);
+  --surface-tint: rgba(61, 209, 156, 0.16);
 
-  /* — Tile tints, dark edition — deep channel-coding gradients — */
-  --tile-live-bg: linear-gradient(165deg, #14402e 0%, #101a15 72%);
-  --tile-live-accent: #35d89a;
-  --tile-movie-bg: linear-gradient(165deg, #123a3c 0%, #101a15 72%);
-  --tile-movie-accent: #3ec8cc;
-  --tile-series-bg: linear-gradient(165deg, #3a2a10 0%, #101a15 72%);
-  --tile-series-accent: #e0a040;
+  /* — Tile tints, dusty edition — mossy channel-coding gradients — */
+  --tile-live-bg: linear-gradient(165deg, #275c42 0%, #33443b 72%);
+  --tile-live-accent: #4be3a6;
+  --tile-movie-bg: linear-gradient(165deg, #245357 0%, #33443b 72%);
+  --tile-movie-accent: #5cd8dd;
+  --tile-series-bg: linear-gradient(165deg, #5c4518 0%, #33443b 72%);
+  --tile-series-accent: #ecb457;
 }
 :root {
   /* — Surfaces (tonal layering over canvas) — */
@@ -290,28 +291,28 @@ select:focus-visible {
 
 /* Subtle scrollbars — tonal, not chrome */
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 *::-webkit-scrollbar-thumb {
   background: #2e3732;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* Deep Sage signature: ledger grain + faint rule, green-black register. */
+/* Dusty Sage signature: ledger grain + faint rule, mossy register. */
 [data-theme="light"] body {
   background-color: var(--background);
   background-image:
     /* ledger rule every 24px */
-    linear-gradient(to bottom, transparent 23px, rgba(220,231,223,0.025) 24px),
+    linear-gradient(to bottom, transparent 23px, rgba(233,240,236,0.03) 24px),
     /* sage aura */
-    radial-gradient(1200px 600px at 20% -10%, rgba(48,178,134,0.07), transparent 60%),
-    radial-gradient(900px 500px at 90% 110%, rgba(224,160,64,0.05), transparent 60%);
+    radial-gradient(1200px 600px at 20% -10%, rgba(61,209,156,0.08), transparent 60%),
+    radial-gradient(900px 500px at 90% 110%, rgba(236,180,87,0.05), transparent 60%);
 }
-[data-theme="light"] ::selection { background: rgba(48,178,134,0.25); }
+[data-theme="light"] ::selection { background: rgba(61,209,156,0.25); }
 
 /* Arabic: Cairo first — clean geometric, excellent at small sizes for EPG */
 [lang="ar"], [lang="ar"] body, [dir="rtl"] {

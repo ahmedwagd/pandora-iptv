@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { MediaImage } from "./MediaImage";
 import { EmptyState } from "./shared/EmptyState";
 
@@ -118,7 +118,35 @@ export function PosterGrid({
   onToggleFavorite,
 }: PosterGridProps) {
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => setVisible(PAGE_SIZE), [items]);
+  useEffect(() => {
+    if (visible >= items.length) return;
+    const sentinel = sentinelRef.current;
+    const root = gridRef.current;
+    if (!sentinel) return;
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) {
+        setVisible((v) => Math.min(items.length, v + PAGE_SIZE));
+      }
+    }, { root: root ?? undefined, rootMargin: "320px 0px", threshold: 0 });
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [visible, items.length]);
+  // also fallback: if grid scroll reaches bottom (for browsers without IntersectionObserver root)
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (visible >= items.length) return;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 320) {
+        setVisible((v) => Math.min(items.length, v + PAGE_SIZE));
+      }
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [visible, items.length]);
   if (items.length === 0) {
     return (
       <div className="poster-grid-empty">
@@ -130,7 +158,7 @@ export function PosterGrid({
   const shown = items.slice(0, visible);
   return (
     <>
-      <div className="poster-grid">
+      <div ref={gridRef} className="poster-grid">
         {shown.map((item) => (
           <PosterCardMemo
             key={item.id}
@@ -142,16 +170,11 @@ export function PosterGrid({
             onToggleFavorite={onToggleFavorite}
           />
         ))}
+        {visible < items.length && <div ref={sentinelRef} aria-hidden style={{ height: 1, gridColumn: "1 / -1" }} />}
       </div>
       {visible < items.length && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
-          <button
-            type="button"
-            className="change-source"
-            onClick={() => setVisible((v) => Math.min(items.length, v + PAGE_SIZE))}
-          >
-            Load more ({items.length - visible} remaining)
-          </button>
+        <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px", opacity: 0.7, fontFamily: "var(--font-mono)", fontSize: 11 }} aria-live="polite">
+          {items.length - visible} more — scroll to load
         </div>
       )}
     </>

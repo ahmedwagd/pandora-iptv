@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useState } from "react";
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
 import { Player } from "./Player";
@@ -10,7 +11,6 @@ interface WatchViewProps {
   epgNow?: EpgProgramme;
   epgNext?: EpgProgramme;
   profileId?: string | null;
-  epgList?: EpgProgramme[];
   onFetchEpg?: (id: string) => Promise<EpgProgramme[]>;
 }
 
@@ -27,11 +27,28 @@ export function WatchView({
   epgNow,
   epgNext,
   profileId = null,
-  epgList = [],
   onFetchEpg,
 }: WatchViewProps) {
   const { has: hasRem, add: addRem, remove: remRem } = useEpgReminders(profileId);
-  const progs = epgList.length ? epgList : ([epgNow, epgNext].filter(Boolean) as EpgProgramme[]);
+  const [localEpg, setLocalEpg] = useState<EpgProgramme[]>([]);
+
+  const isLive = channel.kind == null || channel.kind === "live";
+
+  const loadEpg = useCallback(async () => {
+    if (!onFetchEpg) return;
+    const list = await onFetchEpg(channel.id);
+    setLocalEpg(list);
+  }, [onFetchEpg, channel.id]);
+
+  // Fetch EPG for the current channel whenever it changes (live only).
+  useEffect(() => {
+    setLocalEpg([]);
+    if (isLive && onFetchEpg) void loadEpg();
+  }, [channel.id, isLive, onFetchEpg, loadEpg]);
+
+  const progs = localEpg.length
+    ? localEpg
+    : ([epgNow, epgNext].filter(Boolean) as EpgProgramme[]);
   return (
     <div className="watch">
       <header className="watch-bar">
@@ -63,7 +80,7 @@ export function WatchView({
       <div className="watch-stage">
         <Player channel={channel} onBack={onBack} profileId={profileId} />
       </div>
-      {(progs.length > 0 || onFetchEpg) && (
+      {progs.length > 0 && (
         <div className="watch-epg-panel">
           <EpgTimeline
             programmes={progs}
@@ -81,20 +98,6 @@ export function WatchView({
             }}
             hasReminder={(p) => hasRem(channel.id, p.startTime)}
           />
-          {progs.length === 0 && (
-            <button
-              type="button"
-              className="epg-load"
-              onClick={async () => {
-                if (onFetchEpg) {
-                  const list = await onFetchEpg(channel.id);
-                  /* handled via parent state would be better but fallback */ console.log(list);
-                }
-              }}
-            >
-              Load EPG
-            </button>
-          )}
         </div>
       )}
     </div>
