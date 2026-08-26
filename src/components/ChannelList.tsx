@@ -3,6 +3,7 @@ import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
 import { MediaImage } from "./MediaImage";
 import { EmptyState } from "./shared/EmptyState";
+import { usePlaybackResume } from "../hooks/usePlaybackResume";
 
 interface ChannelListProps {
   channels: Channel[];
@@ -13,8 +14,24 @@ interface ChannelListProps {
   showFavorite?: boolean;
   loading?: boolean;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
+  profileId?: string | null;
 }
 
+function fmtResumeRow(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "00:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+function isResumableRow(pos: number, dur: number): boolean {
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
+  if (pos < 10) return false;
+  if (dur - pos < 15) return false;
+  const pct = pos / dur;
+  return pct > 0.01 && pct < 0.985;
+}
 const ChannelRow = memo(function ChannelRow({
   ch,
   idx,
@@ -24,6 +41,7 @@ const ChannelRow = memo(function ChannelRow({
   onToggleFavorite,
   showFavorite,
   getEpgForChannel,
+  profileId,
 }: {
   ch: Channel;
   idx: number;
@@ -33,10 +51,15 @@ const ChannelRow = memo(function ChannelRow({
   onToggleFavorite: (id: string) => void;
   showFavorite: boolean;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
+  profileId?: string | null;
 }) {
   const isActive = ch.id === activeId;
   const isFav = favoriteIds.has(ch.id);
   const epg = getEpgForChannel?.(ch.id);
+  const { getPosition } = usePlaybackResume(profileId ?? null);
+  const saved = getPosition(ch.id);
+  const resumable = saved && isResumableRow(saved.position, saved.duration);
+
   return (
     <li
       className={`channel-row ${isActive ? "active" : ""}`}
@@ -63,8 +86,9 @@ const ChannelRow = memo(function ChannelRow({
       />
       <span className="channel-name-wrap">
         <span className="channel-name">{ch.name}</span>
-        {epg?.now && <span className="channel-epg">Now: {epg.now.title}</span>}
-        {epg?.next && !epg?.now && <span className="channel-epg channel-epg--next">Next: {epg.next.title}</span>}
+        {resumable && <span className="channel-epg channel-epg--resume">↺ Resume {fmtResumeRow(saved!.position)} / {fmtResumeRow(saved!.duration)}</span>}
+        {!resumable && epg?.now && <span className="channel-epg">Now: {epg.now.title}</span>}
+        {!resumable && epg?.next && !epg?.now && <span className="channel-epg channel-epg--next">Next: {epg.next.title}</span>}
       </span>
       {showFavorite && (
         <button
@@ -93,6 +117,7 @@ export function ChannelList({
   showFavorite = true,
   loading = false,
   getEpgForChannel,
+  profileId,
 }: ChannelListProps) {
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("All");
@@ -173,6 +198,7 @@ export function ChannelList({
               onToggleFavorite={onToggleFavorite}
               showFavorite={showFavorite}
               getEpgForChannel={getEpgForChannel}
+              profileId={profileId}
             />
           ))}
         </ul>

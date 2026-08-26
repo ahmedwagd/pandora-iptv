@@ -46,5 +46,21 @@ export function useWatchHistory(profileId: string | null = null) {
     [key]
   );
 
-  return { history, record };
+  const remove = useCallback(
+    (id: string) => {
+      setHistory((prev) => {
+        const next = prev.filter((i) => i.id !== id);
+        void setValue(key, next.map((i) => ({ ...i, url: redactUrl(i.url) })));
+        return next;
+      });
+    },
+    [key]
+  );
+
+  const clear = useCallback(() => {
+    setHistory([]);
+    void setValue(key, []);
+  }, [key]);
+
+  return { history, record, remove, clear };
 }

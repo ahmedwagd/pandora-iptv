@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react";
 import type { Channel, MovieDetail, Season, Series } from "../types";
 import { ChannelList } from "./ChannelList";
 import { MediaImage } from "./MediaImage";
+import { usePlaybackResume } from "../hooks/usePlaybackResume";
 
 interface CommonProps {
   onBack: () => void;
@@ -9,6 +10,7 @@ interface CommonProps {
   favoriteIds: Set<string>;
   onToggleFavorite: (id: string) => void;
   onRefresh?: () => void;
+  profileId?: string | null;
 }
 
 type DetailProps = CommonProps &
@@ -110,12 +112,14 @@ const SeasonSection = memo(function SeasonSection({
   onWatch,
   favoriteIds,
   onToggleFavorite,
+  profileId,
 }: {
   seasons: Season[];
   episodesLoading: boolean;
   onWatch: (c: Channel) => void;
   favoriteIds: Set<string>;
   onToggleFavorite: (id: string) => void;
+  profileId?: string | null;
 }) {
   const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
   const selectedSeason = useMemo(() => {
@@ -155,6 +159,7 @@ const SeasonSection = memo(function SeasonSection({
             onSelect={onWatch}
             onToggleFavorite={onToggleFavorite}
             showFavorite={false}
+            profileId={profileId}
           />
         </div>
       )}
@@ -162,8 +167,26 @@ const SeasonSection = memo(function SeasonSection({
   );
 });
 
+function fmtResume(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "00:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function isResumable(pos: number, dur: number): boolean {
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
+  if (pos < 10) return false;
+  if (dur - pos < 15) return false;
+  const pct = pos / dur;
+  return pct > 0.01 && pct < 0.985;
+}
+
 export function DetailPage(props: DetailProps) {
-  const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh } = props;
+  const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh, profileId } = props as CommonProps & { profileId?: string | null };
+  const { getPosition } = usePlaybackResume(profileId ?? null);
 
   const title = props.kind === "movie" ? props.channel.name : props.series.name;
   const poster = props.kind === "movie" ? props.channel.logo : props.series.cover;
@@ -190,6 +213,10 @@ export function DetailPage(props: DetailProps) {
   const handleWatch = () => {
     if (props.kind === "movie") onWatch(props.channel);
   };
+
+  const movieResume = props.kind === "movie" ? getPosition(props.channel.id) : undefined;
+  const movieResumable = movieResume && isResumable(movieResume.position, movieResume.duration);
+  const movieResumeLabel = movieResumable ? `↺ Resume from ${fmtResume(movieResume!.position)}` : null;
 
   const ghostNum = useMemo(() => {
     const seed = title.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -285,7 +312,7 @@ export function DetailPage(props: DetailProps) {
               <div className="cinematic-actions">
                 {props.kind === "movie" ? (
                   <button type="button" className="cinematic-watch" onClick={handleWatch}>
-                    <span className="cinematic-watch-icon">▶</span> Watch
+                    <span className="cinematic-watch-icon">{movieResumable ? "↺" : "▶"}</span> {movieResumable ? movieResumeLabel : "Watch"}
                   </button>
                 ) : (
                   <button type="button" className="cinematic-watch" onClick={handleFavorite}>
@@ -315,6 +342,7 @@ export function DetailPage(props: DetailProps) {
                 onWatch={onWatch}
                 favoriteIds={favoriteIds}
                 onToggleFavorite={onToggleFavorite}
+                profileId={profileId}
               />
             </div>
           )}

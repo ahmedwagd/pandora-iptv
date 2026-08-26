@@ -127,6 +127,7 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   const [speedOpen, setSpeedOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
+  const [seekHover, setSeekHover] = useState<{ time: number; left: number } | null>(null);
   const hideTimer = useRef<number | null>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
 
@@ -471,20 +472,37 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
             {isLive ? <span className="pc-live"><span className="pc-live-dot" />Live</span> : <span>{fmtTime(current)} <span className="pc-time-sep">/</span> {fmtTime(duration)}</span>}
           </div>
           {seekable ? (
-            <input
-              className="pc-seek"
-              type="range"
-              role="slider"
-              aria-label="Seek"
-              aria-valuemin={0}
-              aria-valuemax={duration || 0}
-              aria-valuenow={Math.floor(current)}
-              min={0}
-              max={duration || 0}
-              step={0.1}
-              value={current}
-              onChange={handleSeek}
-            />
+            <div
+              className="pc-seek-wrap"
+              onMouseMove={(e) => {
+                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const pct = Math.max(0, Math.min(1, x / rect.width));
+                setSeekHover({ time: pct * duration, left: pct * 100 });
+              }}
+              onMouseLeave={() => setSeekHover(null)}
+            >
+              {seekHover && (
+                <div className="pc-seek-tip" style={{ left: `${seekHover.left}%` } as React.CSSProperties} aria-hidden>
+                  {fmtTime(seekHover.time)}
+                </div>
+              )}
+              <input
+                className="pc-seek"
+                type="range"
+                role="slider"
+                aria-label="Seek"
+                aria-valuemin={0}
+                aria-valuemax={duration || 0}
+                aria-valuenow={Math.floor(current)}
+                min={0}
+                max={duration || 0}
+                step={0.1}
+                value={current}
+                onChange={handleSeek}
+                style={{ background: `linear-gradient(to right, var(--signal) 0%, var(--signal) ${duration ? (current / duration) * 100 : 0}%, rgba(255,255,255,0.16) ${duration ? (current / duration) * 100 : 0}%, rgba(255,255,255,0.16) 100%)` } as React.CSSProperties}
+              />
+            </div>
           ) : (
             <div className="pc-seek pc-seek--live" aria-hidden />
           )}

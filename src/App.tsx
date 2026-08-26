@@ -14,6 +14,7 @@ import { useWatchHistory } from "./hooks/useWatchHistory";
 import { useEpg } from "./hooks/useEpg";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useProfiles } from "./hooks/useProfiles";
+import { usePlaybackResume } from "./hooks/usePlaybackResume";
 import { Settings } from "./components/Settings";
 import { useAppStore } from "./stores/appStore";
 import { getXtreamAccount, type XtreamAccount } from "./lib/xtream";
@@ -48,7 +49,8 @@ export default function App() {
   const { profiles, activeId, active: activeProfile, ready: profilesReady, create: createProfile, remove: removeProfile, switchTo: switchProfile } = useProfiles();
   const { favoriteIds, toggle } = useFavorites(activeId);
   const { creds: xtreamCreds, save: saveXtreamCreds, clear: clearXtreamCreds } = useXtreamCreds(activeId);
-  const { history, record } = useWatchHistory(activeId);
+  const { history, record, remove: removeHistory } = useWatchHistory(activeId);
+  const { clearPosition } = usePlaybackResume(activeId);
 
   const {
     active,
@@ -291,6 +293,23 @@ export default function App() {
     [contentMode, smartFilter, category, search, movies, series, history, favoriteIds]
   );
 
+  const handleRemoveWatched = useCallback(
+    (id: string) => {
+      removeHistory(id);
+      clearPosition(id);
+    },
+    [removeHistory, clearPosition]
+  );
+
+  const handleClearWatched = useCallback(() => {
+    // clear only current contentMode kind
+    const ids = history.filter((h) => (contentMode === "movie" ? h.kind === "movie" : h.kind === "episode")).map((h) => h.id);
+    ids.forEach((id) => clearPosition(id));
+    // batch remove via clear then re-add non-matching is simpler: filter and set
+    // use removeHistory per id
+    ids.forEach((id) => removeHistory(id));
+  }, [history, contentMode, removeHistory, clearPosition]);
+
   const handleOpenPoster = useCallback(
     (id: string) => {
       if (contentMode === "movie") {
@@ -406,6 +425,7 @@ export default function App() {
         favoriteIds={favoriteIds}
         onToggleFavorite={toggle}
         onRefresh={() => loadMovieDetail(detailTarget.channel.id.replace(/^movie:/, ""))}
+        profileId={activeId}
       />
     ) : (
       <DetailPage
@@ -418,6 +438,7 @@ export default function App() {
         favoriteIds={favoriteIds}
         onToggleFavorite={toggle}
         onRefresh={() => openSeries(detailTarget.series)}
+        profileId={activeId}
       />
     );
   }
@@ -466,11 +487,18 @@ export default function App() {
           <h1 className="browse-title">
             {contentMode === "movie" ? "Movies" : "Series"}
           </h1>
-          <span className="browse-count">{posterCards.length} items</span>
+          <div className="browse-header-actions">
+            <span className="browse-count">{posterCards.length} items</span>
+            {smartFilter === "continue" && posterCards.length > 0 && (
+              <button type="button" className="browse-clear" onClick={handleClearWatched}>Clear all</button>
+            )}
+          </div>
         </header>
         <PosterGrid
           items={posterCards}
           onOpen={handleOpenPoster}
+          onRemove={handleRemoveWatched}
+          showRemove={smartFilter === "continue"}
           emptyText={
             smartFilter === "favorites"
               ? "No favorites yet — tap ★ to keep it here."
