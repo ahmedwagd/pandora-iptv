@@ -642,7 +642,7 @@ export default function App() {
               Loaded: {sourceLabel} · {channels.length} channels
             </div>
           )}
-          <Player channel={active} onBack={goHome} profileId={activeId} />
+          <ErrorBoundary><Player channel={active} onBack={goHome} profileId={activeId} /></ErrorBoundary>
         </main>
       </div>
     );

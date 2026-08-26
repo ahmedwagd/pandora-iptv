@@ -216,7 +216,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     const v = videoRef.current;
     if (!v) return;
     const dur = v.duration;
-    const isLive = channelRef.current?.kind === "live" || !Number.isFinite(dur) || dur === 0 || dur === Infinity;
+    const isLive = channelRef.current?.kind == null || channelRef.current?.kind === "live" || !Number.isFinite(dur) || dur === 0 || dur === Infinity;
     // show quick feedback
     const target = document.createElement("div");
     target.className = "dbl-seek-hint";
@@ -512,7 +512,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     if (y > rect.height - 96) { void toggleFullscreen(); return; }
     // near top bar also fullscreen
     if (y < 56) { void toggleFullscreen(); return; }
-    const isLive = channelRef.current?.kind === "live";
+    const isLive = channelRef.current?.kind == null || channelRef.current?.kind === "live";
     const pct = x / w;
     if (!isLive && pct < 0.35) { handleSeek(-skipDuration); }
     else if (pct > 0.65) { handleSeek(skipDuration); }

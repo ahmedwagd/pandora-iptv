@@ -191,10 +191,10 @@ export function PlayerControls({
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(()=> {
-    try { const v=Number(localStorage.getItem("panora:volume")); if(Number.isFinite(v) && v>=0 && v<=1) return v; } catch {} return 1;
+    try { if (typeof window==="undefined"||!window.localStorage) return 1; const v=Number(window.localStorage.getItem("panora:volume")); if(Number.isFinite(v) && v>=0 && v<=1) return v; } catch {} return 1;
   });
   const [muted, setMuted] = useState(()=> {
-    try { return localStorage.getItem("panora:muted")==="1"; } catch {} return false;
+    try { if (typeof window==="undefined"||!window.localStorage) return false; return window.localStorage.getItem("panora:muted")==="1"; } catch {} return false;
   });
   const [paused, setPaused] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -232,13 +232,12 @@ export function PlayerControls({
     }
   }, [visible, scheduleHide]);
 
-  // persist volume
-  useEffect(()=> { try { localStorage.setItem("panora:volume", String(volume)); } catch {} }, [volume]);
-  useEffect(()=> { try { localStorage.setItem("panora:muted", muted?"1":"0"); } catch {} }, [muted]);
+  // persist volume (safe)
+  useEffect(()=> { try { if(typeof window!=="undefined") window.localStorage.setItem("panora:volume", String(volume)); } catch {} }, [volume]);
+  useEffect(()=> { try { if(typeof window!=="undefined") window.localStorage.setItem("panora:muted", muted?"1":"0"); } catch {} }, [muted]);
   useEffect(()=> {
     const v=videoRef.current; if(!v) return;
-    try { const sv=Number(localStorage.getItem("panora:volume")); if(Number.isFinite(sv)) v.volume=sv; } catch {}
-    try { const sm=localStorage.getItem("panora:muted")==="1"; v.muted=sm; if(sm) setMuted(true); } catch {}
+    try { if(typeof window!=="undefined"){ const sv=Number(window.localStorage.getItem("panora:volume")); if(Number.isFinite(sv)) v.volume=sv; const sm=window.localStorage.getItem("panora:muted")==="1"; v.muted=sm; if(sm) setMuted(true); } } catch {}
   }, [videoRef]);
 
   useEffect(() => {

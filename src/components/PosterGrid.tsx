@@ -126,13 +126,16 @@ export function PosterGrid({
     const sentinel = sentinelRef.current;
     const root = gridRef.current;
     if (!sentinel) return;
-    const obs = new IntersectionObserver((entries) => {
-      if (entries[0]?.isIntersecting) {
-        setVisible((v) => Math.min(items.length, v + PAGE_SIZE));
-      }
-    }, { root: root ?? undefined, rootMargin: "320px 0px", threshold: 0 });
-    obs.observe(sentinel);
-    return () => obs.disconnect();
+    try {
+      if (typeof IntersectionObserver === "undefined") return;
+      const obs = new IntersectionObserver((entries) => {
+        if (entries[0]?.isIntersecting) {
+          setVisible((v) => Math.min(items.length, v + PAGE_SIZE));
+        }
+      }, { root: root ?? undefined, rootMargin: "320px 0px", threshold: 0 });
+      obs.observe(sentinel);
+      return () => obs.disconnect();
+    } catch {}
   }, [visible, items.length]);
   // also fallback: if grid scroll reaches bottom (for browsers without IntersectionObserver root)
   useEffect(() => {
