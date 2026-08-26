@@ -51,7 +51,25 @@ export function parseM3U(content: string): Channel[] {
       continue;
     }
 
-    // Any non-comment, non-empty line is treated as a stream URL
+    // Any non-comment, non-empty line is treated as a stream URL.
+    // Some playlists list backup URLs for the same channel: after one
+    // #EXTINF there may be several consecutive URL lines before the next
+    // #EXTINF. The first creates the entry; trailing ones are backups.
+    if (!pendingName) {
+      const last = channels[channels.length - 1];
+      if (last) {
+        last.altUrls = [...(last.altUrls ?? []), line];
+      } else {
+        // Bare URL at top of file with no EXTINF — keep it as its own entry.
+        channels.push({
+          id: hashId(line + line),
+          name: line,
+          url: line,
+          group: "Uncategorized",
+        });
+      }
+      continue;
+    }
     const url = line;
     const name = pendingName || url;
     const group = pendingAttrs["group-title"]?.trim() || "Uncategorized";
@@ -65,7 +83,8 @@ export function parseM3U(content: string): Channel[] {
       tvgId: pendingAttrs["tvg-id"],
     });
 
-    // Reset for next entry
+    // Clear EXTINF state — but trailing consecutive URL lines (no EXTINF)
+    // are attached to this channel via the bare-URL guard above.
     pendingName = "";
     pendingAttrs = {};
   }

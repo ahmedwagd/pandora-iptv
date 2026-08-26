@@ -8,12 +8,23 @@ import { useVideoZoom } from "../hooks/useVideoZoom";
 import { useSkipDuration } from "../hooks/useSkipDuration";
 import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 import { usePlaybackResume } from "../hooks/usePlaybackResume";
+import {
+  CONNECT_TIMEOUT_MS,
+  STALL_TIMEOUT_MS,
+  decideAfterFailure,
+} from "../lib/streamPolicy";
+import { zapNeighbors, zapStep } from "../lib/zap";
+import { ZapOverlay } from "./player/ZapOverlay";
+import type { EpgProgramme } from "../types/epg";
 
 interface PlayerProps {
   channel: Channel | null;
   fitMode?: string;
   onBack?: () => void;
   profileId?: string | null;
+  zapList?: Channel[];
+  onZap?: (ch: Channel) => void;
+  getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
 }
 
 type PlayerStatus = "idle" | "loading" | "buffering" | "reconnecting" | "error";
@@ -24,10 +35,13 @@ export interface TrackInfo {
   lang?: string;
 }
 
-export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null }: PlayerProps) {
+function getSources(ch: Channel): string[] {
+  return [ch.url, ...(ch.altUrls ?? [])].filter(Boolean);
+}
+
+export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null, zapList, onZap, getEpgForChannel }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
-  const retryCountRef = useRef(0);
   const channelRef = useRef<Channel | null>(null);
   channelRef.current = channel;
   const videoZoom = useVideoZoom();
@@ -41,6 +55,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<PlayerStatus>("idle");
+  const [sourceMeta, setSourceMeta] = useState<{ index: number; total: number; attempt: number }>({
+    index: 0,
+    total: 1,
+    attempt: 0,
+  });
   const [audioTracks, setAudioTracks] = useState<TrackInfo[]>([]);
   const [subtitleTracks, setSubtitleTracks] = useState<TrackInfo[]>([]);
   const [audioId, setAudioId] = useState<number>(-1);
@@ -52,6 +71,19 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     null
   );
   const pendingResumeRef = useRef<{ position: number; duration: number } | null>(null);
+
+  // Resilience refs (per channel session)
+  const sourceIndexRef = useRef(0);
+  const attemptRef = useRef(0);
+  const retryTimerRef = useRef<number | null>(null);
+  const stallTimerRef = useRef<number | null>(null);
+  const connectTimerRef = useRef<number | null>(null);
+  const statusSinceRef = useRef<number>(Date.now());
+  const lastProgressRef = useRef<number>(Date.now());
+  const [zapOpen, setZapOpen] = useState(false);
+  const zapHideRef = useRef<number | null>(null);
+  const zapOpenRef = useRef(false);
+  useEffect(() => { zapOpenRef.current = zapOpen; }, [zapOpen]);
 
   const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
     if (!v) return;
@@ -87,17 +119,14 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       const saved = getPositionRef.current(channel.id);
       if (!saved) return;
       if (!isResumableRef.current(saved.position, saved.duration, kind ?? channel.kind)) {
-        // stale (near end or too early) — clean up
         if (saved.duration - saved.position < 15) clearPosition(channel.id);
         return;
       }
-      // delay showing until duration is known; if we already have duration, show now
       const v = videoRef.current;
       const dur =
         v?.duration && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : saved.duration;
       pendingResumeRef.current = { position: saved.position, duration: dur };
       hasPromptedRef.current = channel.id;
-      // pause immediately so user sees prompt instead of autoplaying from 0
       try {
         v?.pause();
       } catch {}
@@ -164,7 +193,6 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         setSubtitleTracks([]);
       }
     } else if (v) {
-      // native text tracks fallback
       try {
         const tt = Array.from(v.textTracks) as any[];
         if (tt.length) {
@@ -212,36 +240,52 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     }
   }, []);
 
-  const handleSeek = useCallback((delta: number) => {
-    const v = videoRef.current;
-    if (!v) return;
-    const dur = v.duration;
-    const isLive = channelRef.current?.kind == null || channelRef.current?.kind === "live" || !Number.isFinite(dur) || dur === 0 || dur === Infinity;
-    // show quick feedback
-    const target = document.createElement("div");
-    target.className = "dbl-seek-hint";
-    target.textContent = (delta > 0 ? "+" : "") + delta + "s";
-    target.style.position = "absolute";
-    target.style.top = "50%";
-    target.style.left = delta > 0 ? "78%" : "22%";
-    target.style.transform = "translate(-50%,-50%)";
-    target.style.background = "rgba(0,0,0,0.72)";
-    target.style.color = "#fff";
-    target.style.padding = "8px 14px";
-    target.style.borderRadius = "9999px";
-    target.style.fontFamily = "var(--font-mono)";
-    target.style.fontSize = "14px";
-    target.style.fontWeight = "700";
-    target.style.backdropFilter = "blur(6px)";
-    target.style.pointerEvents = "none";
-    target.style.zIndex = "6";
-    target.style.animation = "seekHint 520ms ease";
-    const playerEl = v.parentElement;
-    if (playerEl) { playerEl.appendChild(target); window.setTimeout(()=> target.remove(), 560); }
-    if (isLive) { v.currentTime = Math.max(0, v.currentTime + delta); return; }
-    const nd = Number.isFinite(dur) && dur>0 ? Math.max(0, Math.min(dur, v.currentTime + delta)) : v.currentTime+delta;
-    v.currentTime = nd;
-  }, [skipDuration]);
+  const handleSeek = useCallback(
+    (delta: number) => {
+      const v = videoRef.current;
+      if (!v) return;
+      const dur = v.duration;
+      const isLive =
+        channelRef.current?.kind == null ||
+        channelRef.current?.kind === "live" ||
+        !Number.isFinite(dur) ||
+        dur === 0 ||
+        dur === Infinity;
+      const target = document.createElement("div");
+      target.className = "dbl-seek-hint";
+      target.textContent = (delta > 0 ? "+" : "") + delta + "s";
+      target.style.position = "absolute";
+      target.style.top = "50%";
+      target.style.left = delta > 0 ? "78%" : "22%";
+      target.style.transform = "translate(-50%,-50%)";
+      target.style.background = "rgba(0,0,0,0.72)";
+      target.style.color = "#fff";
+      target.style.padding = "8px 14px";
+      target.style.borderRadius = "9999px";
+      target.style.fontFamily = "var(--font-mono)";
+      target.style.fontSize = "14px";
+      target.style.fontWeight = "700";
+      target.style.backdropFilter = "blur(6px)";
+      target.style.pointerEvents = "none";
+      target.style.zIndex = "6";
+      target.style.animation = "seekHint 520ms ease";
+      const playerEl = v.parentElement;
+      if (playerEl) {
+        playerEl.appendChild(target);
+        window.setTimeout(() => target.remove(), 560);
+      }
+      if (isLive) {
+        v.currentTime = Math.max(0, v.currentTime + delta);
+        return;
+      }
+      const nd =
+        Number.isFinite(dur) && dur > 0
+          ? Math.max(0, Math.min(dur, v.currentTime + delta))
+          : v.currentTime + delta;
+      v.currentTime = nd;
+    },
+    [skipDuration]
+  );
 
   const toggleFullscreen = useCallback(async () => {
     const v = videoRef.current;
@@ -261,11 +305,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         (hls as any).subtitleTrack = id;
         setSubtitleId(id);
       } catch {}
-      // also toggle native textTracks visibility via hls
       const v = videoRef.current;
       if (v) {
         Array.from(v.textTracks).forEach((t: any) => {
-          // hls manages showing; keep native in sync if needed
           if (id === -1) t.mode = "disabled";
         });
       }
@@ -279,21 +321,95 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     }
   }, []);
 
+  const clearTimers = useCallback(() => {
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    if (stallTimerRef.current !== null) {
+      window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = null;
+    }
+    if (connectTimerRef.current !== null) {
+      window.clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = null;
+    }
+  }, []);
+
+  const setStatusWithStamp = useCallback((s: PlayerStatus) => {
+    statusSinceRef.current = Date.now();
+    setStatus(s);
+  }, []);
+
+  const scheduleZapHide = useCallback(() => {
+    if (zapHideRef.current !== null) window.clearTimeout(zapHideRef.current);
+    zapHideRef.current = window.setTimeout(() => setZapOpen(false), 4000);
+  }, []);
+
+  const zapDelta = useCallback((delta: number) => {
+    if (!zapList || zapList.length === 0 || !channel || !onZap) return;
+    const isLive = channel.kind == null || channel.kind === "live";
+    if (!isLive) return;
+    const next = zapStep(zapList, channel.id, delta);
+    if (next) {
+      setZapOpen(true);
+      scheduleZapHide();
+      onZap(next);
+    }
+  }, [zapList, channel, onZap, scheduleZapHide]);
+
+  const zapSelect = useCallback((ch: Channel) => {
+    if (!onZap) return;
+    setZapOpen(true);
+    scheduleZapHide();
+    onZap(ch);
+  }, [onZap, scheduleZapHide]);
+
+  useEffect(() => {
+    if (!zapList || zapList.length < 2 || !channel) return;
+    const isLive = channel.kind == null || channel.kind === "live";
+    if (!isLive) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        zapDelta(-1);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        zapDelta(1);
+      } else if (e.key === "Escape" && zapOpenRef.current) {
+        e.preventDefault();
+        if (zapHideRef.current !== null) window.clearTimeout(zapHideRef.current);
+        setZapOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [zapList, channel, zapDelta]);
+
+  // Attach HLS for a specific source url
   const attachHls = useCallback(
     (video: HTMLVideoElement, url: string) => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      const hls = new Hls({ maxBufferLength: 30, enableWorker: true });
+      const hls = new Hls({
+        maxBufferLength: 30,
+        enableWorker: true,
+        manifestLoadingTimeOut: CONNECT_TIMEOUT_MS,
+        fragLoadingTimeOut: STALL_TIMEOUT_MS,
+      });
       hlsRef.current = hls;
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setStatus("buffering");
+        clearTimers();
+        lastProgressRef.current = Date.now();
+        setStatusWithStamp("buffering");
         refreshTracks();
         applySpeed(video, speedRef.current);
-        // resume prompt — check saved position before autoplaying
         const saved = channelRef.current ? getPosition(channelRef.current.id) : undefined;
         if (saved && isResumable(saved.position, saved.duration, channelRef.current?.kind)) {
           const v = videoRef.current;
@@ -311,124 +427,336 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED as any, onTracks);
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED as any, onTracks);
       hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH as any, onTracks as any);
+      hls.on(Hls.Events.FRAG_BUFFERED, () => {
+        lastProgressRef.current = Date.now();
+        if (stallTimerRef.current !== null) {
+          window.clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+      });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           try {
             hls.recoverMediaError();
-            setStatus("reconnecting");
+            setStatusWithStamp("reconnecting");
             return;
           } catch {}
         }
-        if (retryCountRef.current < 3) {
-          retryCountRef.current += 1;
-          setStatus("reconnecting");
+        // Delegate to centralized failure handler
+        const ch = channelRef.current;
+        if (!ch) return;
+        const sources = getSources(ch);
+        const total = sources.length;
+        const decision = decideAfterFailure({
+          sourceIndex: sourceIndexRef.current,
+          totalSources: total,
+          attempt: attemptRef.current,
+        });
+        if (decision.kind === "retry") {
+          attemptRef.current = decision.nextAttempt;
+          setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
+          setStatusWithStamp("reconnecting");
           setError(null);
-          const delay = 1000 * retryCountRef.current;
-          window.setTimeout(() => {
-            const ch = channelRef.current;
-            if (!ch || ch.url !== url) return;
+          retryTimerRef.current = window.setTimeout(() => {
+            const cur = channelRef.current;
+            if (!cur) return;
+            const curSources = getSources(cur);
+            const curUrl = curSources[sourceIndexRef.current];
+            if (!curUrl || curUrl !== url) return;
             try {
               hls.startLoad();
             } catch {
-              if (video.src !== url) {
-                hls.loadSource(url);
-              }
+              hls.loadSource(curUrl);
             }
-          }, delay);
+          }, decision.delayMs);
+        } else if (decision.kind === "switch-source") {
+          sourceIndexRef.current = decision.nextSourceIndex;
+          attemptRef.current = 0;
+          setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
+          setStatusWithStamp("reconnecting");
+          setError(`Switching to backup source…`);
+          retryTimerRef.current = window.setTimeout(() => {
+            const cur = channelRef.current;
+            const curV = videoRef.current;
+            if (!cur || !curV) return;
+            const curSources = getSources(cur);
+            const nextUrl = curSources[decision.nextSourceIndex];
+            if (!nextUrl) return;
+            // Re-arm as a fresh load
+            if (hlsRef.current) {
+              hlsRef.current.destroy();
+              hlsRef.current = null;
+            }
+            curV.removeAttribute("src");
+            curV.load();
+            setError(null);
+            setStatusWithStamp("loading");
+            if (nextUrl.includes(".m3u8") || nextUrl.includes("m3u8")) {
+              if (Hls.isSupported()) attachHls(curV, nextUrl);
+              else {
+                curV.src = nextUrl;
+                void curV.play().catch(() => {});
+              }
+            } else {
+              curV.src = nextUrl;
+              void curV.play().catch(() => {});
+            }
+          }, decision.delayMs);
         } else {
-          setStatus("error");
-          setError(`Stream error: ${data.details}`);
+          setStatusWithStamp("error");
+          setError(`Stream error: ${data.details}${total > 1 ? ` (all ${total} sources exhausted)` : ""}`);
         }
       });
     },
-    [refreshTracks, applySpeed]
+    [refreshTracks, applySpeed, clearTimers, setStatusWithStamp]
+  );
+
+  const loadAtSource = useCallback(
+    (video: HTMLVideoElement, ch: Channel, sourceIndex: number) => {
+      const sources = getSources(ch);
+      const url = sources[sourceIndex];
+      if (!url) {
+        setStatusWithStamp("error");
+        setError("No stream URL available.");
+        return;
+      }
+      sourceIndexRef.current = sourceIndex;
+      setSourceMeta({ index: sourceIndex, total: sources.length, attempt: attemptRef.current });
+      const isLikelyHls = url.includes(".m3u8") || url.includes("m3u8");
+      if (isLikelyHls && Hls.isSupported()) {
+        attachHls(video, url);
+      } else {
+        video.src = url;
+        void video.play().catch(() => {});
+        applySpeed(video, speedRef.current);
+      }
+    },
+    [attachHls, applySpeed, setStatusWithStamp]
   );
 
   const retry = useCallback(() => {
     const v = videoRef.current;
     const ch = channelRef.current;
     if (!v || !ch) return;
-    retryCountRef.current = 0;
+    clearTimers();
+    attemptRef.current = 0;
+    sourceIndexRef.current = 0;
+    setSourceMeta({ index: 0, total: getSources(ch).length, attempt: 0 });
     setError(null);
-    setStatus("loading");
+    setStatusWithStamp("loading");
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
     v.removeAttribute("src");
     v.load();
-    const isLikelyHls = ch.url.includes(".m3u8") || ch.url.includes("m3u8");
-    if (isLikelyHls && Hls.isSupported()) {
-      attachHls(v, ch.url);
-    } else {
-      v.src = ch.url;
-      void v.play().catch(() => {});
-      applySpeed(v, speedRef.current);
-    }
-  }, [attachHls, applySpeed]);
+    loadAtSource(v, ch, 0);
+  }, [loadAtSource, clearTimers, setStatusWithStamp]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !channel) {
-      setStatus("idle");
+      clearTimers();
+      setStatusWithStamp("idle");
       setError(null);
       setAudioTracks([]);
       setSubtitleTracks([]);
       setAudioId(-1);
       setSubtitleId(-1);
+      setSourceMeta({ index: 0, total: 1, attempt: 0 });
       return;
     }
     setError(null);
-    setStatus("loading");
-    retryCountRef.current = 0;
+    setStatusWithStamp("loading");
+    attemptRef.current = 0;
+    sourceIndexRef.current = 0;
+    lastProgressRef.current = Date.now();
+    const sources = getSources(channel);
+    setSourceMeta({ index: 0, total: sources.length, attempt: 0 });
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-    const isLikelyHls = channel.url.includes(".m3u8") || channel.url.includes("m3u8");
-    const onWaiting = () => setStatus((s) => (s === "error" ? s : "buffering"));
+    clearTimers();
+
+    const armStall = () => {
+      if (stallTimerRef.current !== null) window.clearTimeout(stallTimerRef.current);
+      stallTimerRef.current = window.setTimeout(() => {
+        const ch = channelRef.current;
+        const v = videoRef.current;
+        if (!ch || !v) return;
+        // Check if stalled since last progress
+        if (Date.now() - lastProgressRef.current >= STALL_TIMEOUT_MS) {
+          const total = getSources(ch).length;
+          const decision = decideAfterFailure({
+            sourceIndex: sourceIndexRef.current,
+            totalSources: total,
+            attempt: attemptRef.current,
+          });
+          if (decision.kind === "retry" || decision.kind === "switch-source") {
+            setStatusWithStamp("reconnecting");
+            // Reuse the same retry path as HLS error: just reload at current/next source
+            if (decision.kind === "retry") {
+              attemptRef.current = decision.nextAttempt;
+              setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
+              retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+            } else {
+              sourceIndexRef.current = decision.nextSourceIndex;
+              attemptRef.current = 0;
+              setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
+              setError(`Switching to backup source…`);
+              retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+            }
+          } else {
+            setStatusWithStamp("error");
+            setError(`Stream stalled — all ${total} sources exhausted.`);
+          }
+        }
+      }, STALL_TIMEOUT_MS);
+    };
+
+    const armConnect = () => {
+      if (connectTimerRef.current !== null) window.clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = window.setTimeout(() => {
+        const v = videoRef.current;
+        const ch = channelRef.current;
+        if (!v || !ch) return;
+        // If still not playing after connect timeout, treat as failure
+        if (v.readyState < 2) {
+          const total = getSources(ch).length;
+          const decision = decideAfterFailure({
+            sourceIndex: sourceIndexRef.current,
+            totalSources: total,
+            attempt: attemptRef.current,
+          });
+          if (decision.kind === "retry") {
+            attemptRef.current = decision.nextAttempt;
+            setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
+            setStatusWithStamp("reconnecting");
+            retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+          } else if (decision.kind === "switch-source") {
+            sourceIndexRef.current = decision.nextSourceIndex;
+            attemptRef.current = 0;
+            setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
+            setError(`Switching to backup source…`);
+            setStatusWithStamp("reconnecting");
+            retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+          } else {
+            setStatusWithStamp("error");
+            setError(`Connection timeout — all ${total} sources exhausted.`);
+          }
+        }
+      }, CONNECT_TIMEOUT_MS);
+    };
+
+    const onWaiting = () => {
+      setStatusWithStamp("buffering");
+      armStall();
+    };
     const onPlaying = () => {
-      setStatus("idle");
+      clearTimers();
+      lastProgressRef.current = Date.now();
+      setStatusWithStamp("idle");
       refreshTracks();
       applySpeed(video, speedRef.current);
     };
-    const onCanPlay = () => setStatus((s) => (s === "loading" || s === "buffering" ? "idle" : s));
+    const onCanPlay = () => {
+      lastProgressRef.current = Date.now();
+      if (connectTimerRef.current !== null) {
+        window.clearTimeout(connectTimerRef.current);
+        connectTimerRef.current = null;
+      }
+      if (stallTimerRef.current !== null) {
+        window.clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
+      setStatus((s) => (s === "loading" || s === "buffering" ? "idle" : s));
+    };
+    const onTimeUpdate = () => {
+      lastProgressRef.current = Date.now();
+    };
+    const onProgress = () => {
+      lastProgressRef.current = Date.now();
+    };
     const onLoadedMeta = () => {
       refreshTracks();
       applySpeed(video, speedRef.current);
+      const url = sources[0];
+      const isLikelyHls = url.includes(".m3u8") || url.includes("m3u8");
       if (!isLikelyHls || !Hls.isSupported()) tryShowResumePrompt(channel.kind);
     };
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("loadedmetadata", onLoadedMeta);
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("progress", onProgress);
+
+    const url0 = sources[0];
+    const isLikelyHls = url0.includes(".m3u8") || url0.includes("m3u8");
     if (isLikelyHls && Hls.isSupported()) {
-      attachHls(video, channel.url);
+      attachHls(video, url0);
       video.addEventListener("playing", onPlaying);
+      armConnect();
     } else {
       video.onloadeddata = null;
       video.onerror = null;
-      video.src = channel.url;
+      video.src = url0;
+      armConnect();
       const onLoaded = () => {
-        setStatus("idle");
+        if (connectTimerRef.current !== null) {
+          window.clearTimeout(connectTimerRef.current);
+          connectTimerRef.current = null;
+        }
+        lastProgressRef.current = Date.now();
+        setStatusWithStamp("idle");
         refreshTracks();
         applySpeed(video, speedRef.current);
       };
       const onErr = () => {
-        if (retryCountRef.current < 3) {
-          retryCountRef.current += 1;
-          setStatus("reconnecting");
-          window.setTimeout(() => {
-            const ch = channelRef.current;
-            if (!ch || ch.url !== channel.url) return;
-            video.src = ch.url;
-            void video.play().catch(() => {});
-            applySpeed(video, speedRef.current);
-          }, 1000 * retryCountRef.current);
+        clearTimers();
+        const ch = channelRef.current;
+        if (!ch) return;
+        const curSources = getSources(ch);
+        const total = curSources.length;
+        const decision = decideAfterFailure({
+          sourceIndex: sourceIndexRef.current,
+          totalSources: total,
+          attempt: attemptRef.current,
+        });
+        if (decision.kind === "retry") {
+          attemptRef.current = decision.nextAttempt;
+          setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
+          setStatusWithStamp("reconnecting");
+          retryTimerRef.current = window.setTimeout(() => {
+            const cur = channelRef.current;
+            const curV = videoRef.current;
+            if (!cur || !curV) return;
+            const curUrl = getSources(cur)[sourceIndexRef.current];
+            if (!curUrl) return;
+            curV.src = curUrl;
+            void curV.play().catch(() => {});
+            applySpeed(curV, speedRef.current);
+          }, decision.delayMs);
+        } else if (decision.kind === "switch-source") {
+          sourceIndexRef.current = decision.nextSourceIndex;
+          attemptRef.current = 0;
+          setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
+          setStatusWithStamp("reconnecting");
+          setError(`Switching to backup source…`);
+          retryTimerRef.current = window.setTimeout(() => {
+            const cur = channelRef.current;
+            const curV = videoRef.current;
+            if (!cur || !curV) return;
+            const nextUrl = getSources(cur)[decision.nextSourceIndex];
+            curV.src = nextUrl;
+            void curV.play().catch(() => {});
+            applySpeed(curV, speedRef.current);
+          }, decision.delayMs);
         } else {
-          setStatus("error");
-          setError("Unable to play this stream.");
+          setStatusWithStamp("error");
+          setError(`Unable to play this stream.${total > 1 ? ` (all ${total} sources exhausted)` : ""}`);
         }
       };
       video.addEventListener("loadeddata", onLoaded, { once: true });
@@ -440,6 +768,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("loadedmetadata", onLoadedMeta);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("progress", onProgress);
+      clearTimers();
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -449,7 +780,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       video.removeAttribute("src");
       video.load();
     };
-  }, [channel, attachHls]);
+  }, [channel, attachHls, loadAtSource]);
 
   // periodic resume save — only for VOD (movie/episode), not live
   useEffect(() => {
@@ -501,23 +832,37 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     );
   }
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const v = videoRef.current;
-    if (!v) { void toggleFullscreen(); return; }
-    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const w = rect.width || 1;
-    // ignore if controls bar area (bottom 88px) — let controls handle fullscreen
-    const y = e.clientY - rect.top;
-    if (y > rect.height - 96) { void toggleFullscreen(); return; }
-    // near top bar also fullscreen
-    if (y < 56) { void toggleFullscreen(); return; }
-    const isLive = channelRef.current?.kind == null || channelRef.current?.kind === "live";
-    const pct = x / w;
-    if (!isLive && pct < 0.35) { handleSeek(-skipDuration); }
-    else if (pct > 0.65) { handleSeek(skipDuration); }
-    else { void toggleFullscreen(); }
-  }, [toggleFullscreen, handleSeek, skipDuration]);
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const v = videoRef.current;
+      if (!v) {
+        void toggleFullscreen();
+        return;
+      }
+      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const w = rect.width || 1;
+      const y = e.clientY - rect.top;
+      if (y > rect.height - 96) {
+        void toggleFullscreen();
+        return;
+      }
+      if (y < 56) {
+        void toggleFullscreen();
+        return;
+      }
+      const isLive = channelRef.current?.kind == null || channelRef.current?.kind === "live";
+      const pct = x / w;
+      if (!isLive && pct < 0.35) {
+        handleSeek(-skipDuration);
+      } else if (pct > 0.65) {
+        handleSeek(skipDuration);
+      } else {
+        void toggleFullscreen();
+      }
+    },
+    [toggleFullscreen, handleSeek, skipDuration]
+  );
 
   return (
     <div className="player" onDoubleClick={handleDoubleClick}>
@@ -548,7 +893,27 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         subtitleId={subtitleId}
         onSwitchAudio={switchAudio}
         onSwitchSubtitle={switchSubtitle}
+        onZapPrev={zapList && zapList.length > 1 && (channel?.kind == null || channel?.kind === "live") ? () => zapDelta(-1) : undefined}
+        onZapNext={zapList && zapList.length > 1 && (channel?.kind == null || channel?.kind === "live") ? () => zapDelta(1) : undefined}
+        zapOpen={zapOpen}
+        onToggleZap={() => {
+          if (zapOpen) {
+            if (zapHideRef.current !== null) window.clearTimeout(zapHideRef.current);
+            setZapOpen(false);
+          } else {
+            setZapOpen(true);
+            scheduleZapHide();
+          }
+        }}
       />
+      {zapOpen && zapList && zapList.length > 1 && (
+        <ZapOverlay
+          list={zapNeighbors(zapList, channel.id, 3)}
+          currentId={channel.id}
+          getEpgForChannel={getEpgForChannel}
+          onSelect={zapSelect}
+        />
+      )}
       {resumePrompt && (
         <ResumePrompt
           position={resumePrompt.position}
@@ -561,19 +926,20 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       {status === "loading" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          Tuning {channel.name}...
+          Tuning {channel.name}…{sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}
       {status === "buffering" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          Buffering...
+          Buffering…{sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}
       {status === "reconnecting" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          Reconnecting... ({retryCountRef.current}/3)
+          {error?.startsWith("Switching") ? error : `Reconnecting… (${sourceMeta.attempt}/${3})`}
+          {sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}
       {status === "error" && error && (

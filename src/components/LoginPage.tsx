@@ -37,6 +37,7 @@ export function LoginPage({
   const [username, setUsername] = useState(xtreamCreds?.username ?? "");
   const [password, setPassword] = useState(xtreamCreds?.password ?? "");
   const [remember, setRemember] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [url, setUrl] = useState("");
 
   // Saved credentials load from disk asynchronously; backfill the form
@@ -136,19 +137,30 @@ export function LoginPage({
                   onChange={(e) => setUsername(e.target.value)}
                 />
               </div>
-              <div className="login-field">
+              <div className="login-field login-field--password">
                 <label htmlFor="xtream-password">Password</label>
-                <input
-                  id="xtream-password"
-                  type="password"
-                  placeholder="password"
-                  value={password}
-                  autoComplete="off"
-                  onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") submitXtream();
-                  }}
-                />
+                <div className="login-password-wrap">
+                  <input
+                    id="xtream-password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="password"
+                    value={password}
+                    autoComplete="off"
+                    onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") submitXtream();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="login-eye"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    title={showPassword ? "Hide" : "Show"}
+                  >
+                    {showPassword ? "◯" : "◎"}
+                  </button>
+                </div>
               </div>
               <label className="login-remember">
                 <input

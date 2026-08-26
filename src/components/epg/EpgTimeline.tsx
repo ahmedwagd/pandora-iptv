@@ -17,11 +17,17 @@ export function EpgTimeline({
   channelName,
   onReminder,
   hasReminder,
+  onCatchup,
+  catchupEnabled,
+  catchupDays,
 }: {
   programmes: EpgProgramme[];
   channelName: string;
   onReminder?: (p: EpgProgramme) => void;
   hasReminder?: (p: EpgProgramme) => boolean;
+  onCatchup?: (p: EpgProgramme) => void;
+  catchupEnabled?: boolean;
+  catchupDays?: number;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -87,6 +93,22 @@ export function EpgTimeline({
                   {reminder ? "🔔" : "⏰"}
                 </button>
               )}
+              {onCatchup && isPast && catchupEnabled && (() => {
+                const ageDays = (now - p.stopTime) / 86400000;
+                const withinWindow = catchupDays == null || ageDays <= catchupDays;
+                if (!withinWindow) return null;
+                return (
+                  <button
+                    type="button"
+                    className="epg-catchup"
+                    onClick={(e) => { e.stopPropagation(); onCatchup(p); }}
+                    aria-label="Watch catchup"
+                    title="Watch catchup"
+                  >
+                    ►
+                  </button>
+                );
+              })()}
             </div>
           );
         })}

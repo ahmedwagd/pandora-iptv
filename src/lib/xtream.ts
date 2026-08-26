@@ -13,6 +13,9 @@ interface XtreamLiveStream {
   stream_icon: string | null;
   epg_channel_id: string | null;
   category_id: string;
+  tv_archive?: string | number | boolean | null;
+  tv_archive_duration?: string | number | null;
+  direct_source?: string | null;
 }
 
 interface XtreamVodStream {
@@ -54,7 +57,7 @@ interface XtreamSeriesInfo {
     cover?: string | null;
   };
   seasons?: XtreamSeason[];
-  episodes?: Record<string, XtreamEpisode[]>;
+  episodes?: Record<string, XtreamEpisode[]> | XtreamEpisode[];
 }
 
 interface XtreamVodInfo {
@@ -68,6 +71,9 @@ interface XtreamVodInfo {
     releasedate?: string | null;
     duration?: string | null;
     backdrop_path?: string[] | null;
+    director?: string | null;
+    country?: string | null;
+    duration_secs?: string | number | null;
   };
 }
 
@@ -176,6 +182,75 @@ export function buildXtreamEpisodeUrl(
   extension: string
 ): string {
   return `${normalizeServer(creds.server)}/series/${buildCredsPath(creds)}/${episodeId}.${extension}`;
+}
+
+export function buildXtreamCatchupUrl(
+  creds: XtreamCreds,
+  streamId: number,
+  startSec: number,
+  endSec: number
+): string {
+  return `${normalizeServer(creds.server)}/live/${buildCredsPath(creds)}/${streamId}-${startSec}-${endSec}.m3u8`;
+}
+
+export function parseCatchup(s: XtreamLiveStream): { days: number; source: string } | null {
+  const arch = s.tv_archive as unknown;
+  if (arch == null || arch === 0 || arch === "0" || arch === false || arch === "false") return null;
+  const enabled = arch === 1 || arch === "1" || arch === true || String(arch) === "1";
+  if (!enabled) return null;
+  const daysRaw = s.tv_archive_duration;
+  const days = daysRaw != null && String(daysRaw).trim() !== "" ? Number(daysRaw) : 1;
+  return { days: Number.isFinite(days) && days > 0 ? days : 1, source: s.direct_source ?? "" };
+}
+
+function buildXtreamAltBases(
+  creds: XtreamCreds,
+  serverInfo: XtreamAccountInfo["server_info"]
+): string[] {
+  const primary = normalizeServer(creds.server);
+  const alts: string[] = [];
+  const push = (b: string) => {
+    const n = b.replace(/\/+$/, "");
+    if (n && n !== primary && !alts.includes(n)) alts.push(n);
+  };
+  if (serverInfo?.url) {
+    const urlBase = normalizeServer(String(serverInfo.url));
+    // Server url may miss port — attach the appropriate port.
+    const hasPort = /:\d+$/.test(urlBase);
+    if (!hasPort) {
+      if (String(serverInfo.https_port ?? "").trim() && urlBase.startsWith("https://"))
+        push(`${urlBase}:${String(serverInfo.https_port).trim()}`);
+      if (String(serverInfo.port ?? "").trim() && urlBase.startsWith("http://"))
+        push(`${urlBase}:${String(serverInfo.port).trim()}`);
+    }
+    push(urlBase);
+    // Also derive the sibling scheme at the same host.
+    try {
+      const u = new URL(urlBase);
+      const host = u.hostname;
+      const proto = u.protocol;
+      if (serverInfo.port && proto === "https:") push(`http://${host}:${String(serverInfo.port).trim()}`);
+      if (serverInfo.https_port && proto === "http:") push(`https://${host}:${String(serverInfo.https_port).trim()}`);
+    } catch {}
+  }
+  // Fallback: flip the primary scheme using the alternate port.
+  try {
+    const u = new URL(primary);
+    const host = u.hostname;
+    if (u.protocol === "http:" && serverInfo?.https_port) push(`https://${host}:${String(serverInfo.https_port).trim()}`);
+    if (u.protocol === "https:" && serverInfo?.port) push(`http://${host}:${String(serverInfo.port).trim()}`);
+  } catch {}
+  return alts.slice(0, 2);
+}
+
+function buildXtreamLiveAltUrls(
+  creds: XtreamCreds,
+  streamId: number,
+  altBases: string[]
+): string[] {
+  if (altBases.length === 0) return [];
+  const credsPath = buildCredsPath(creds);
+  return altBases.map((b) => `${b}/live/${credsPath}/${streamId}.m3u8`);
 }
 
 function categoryNameMap(categories: XtreamCategory[]): Map<string, string> {
@@ -290,13 +365,21 @@ async function assertAuth(
     throw new Error(status ? `Account is ${status}.` : "Invalid Xtream credentials.");
   }
 }
+// keep reference for legacy callers
+void assertAuth;
 
 export async function getXtreamLiveChannels(
   creds: XtreamCreds,
   fetchFn: FetchFn,
   opts?: { signal?: AbortSignal }
 ): Promise<Channel[]> {
-  await assertAuth(creds, fetchFn, opts);
+  const accountData = await fetchJson<XtreamAccountInfo>(fetchFn, buildApiUrl(creds), opts);
+  const auth = accountData.user_info?.auth;
+  if (auth !== 1) {
+    const status = accountData.user_info?.status;
+    throw new Error(status ? `Account is ${status}.` : "Invalid Xtream credentials.");
+  }
+  const altBases = buildXtreamAltBases(creds, accountData.server_info);
 
   const [categories, streams] = await Promise.all([
     fetchJson<XtreamCategory[]>(fetchFn, buildApiUrl(creds, "get_live_categories"), opts),
@@ -304,15 +387,23 @@ export async function getXtreamLiveChannels(
   ]);
   const nameByCat = categoryNameMap(categories);
 
-  return streams.map((s) => ({
-    id: String(s.stream_id),
-    name: s.name,
-    url: buildXtreamLiveUrl(creds, s.stream_id),
-    logo: s.stream_icon ?? undefined,
-    group: nameByCat.get(s.category_id) ?? "Uncategorized",
-    tvgId: s.epg_channel_id ?? undefined,
-    kind: "live" as const,
-  }));
+  return streams.map((s) => {
+    const url = buildXtreamLiveUrl(creds, s.stream_id);
+    const altRaw = buildXtreamLiveAltUrls(creds, s.stream_id, altBases);
+    const altUrls = altRaw.filter((u) => u !== url);
+    const catchup = parseCatchup(s);
+    return {
+      id: String(s.stream_id),
+      name: s.name,
+      url,
+      ...(altUrls.length ? { altUrls } : {}),
+      ...(catchup ? { catchup } : {}),
+      logo: s.stream_icon ?? undefined,
+      group: nameByCat.get(s.category_id) ?? "Uncategorized",
+      tvgId: s.epg_channel_id ?? undefined,
+      kind: "live" as const,
+    };
+  });
 }
 
 export async function getXtreamMovies(
@@ -374,6 +465,7 @@ export async function getXtreamMovieDetail(
   const info = data.info ?? {};
   const backdrop = info.backdrop || info.backdrop_path?.[0] || undefined;
 
+  const durSecs = info.duration_secs != null ? Number(info.duration_secs) : undefined;
   return {
     poster: info.movie_image ?? undefined,
     backdrop,
@@ -383,6 +475,9 @@ export async function getXtreamMovieDetail(
     rating: ratingString(info.rating),
     year: yearFromDate(info.releasedate),
     duration: info.duration ?? undefined,
+    director: info.director ?? undefined,
+    country: info.country ?? undefined,
+    durationSeconds: Number.isFinite(durSecs as number) ? (durSecs as number) : undefined,
   };
 }
 
@@ -398,8 +493,18 @@ export async function getXtreamSeasons(
     opts
   );
 
-  const episodesBySeason = info.episodes ?? {};
+  const rawEpisodes = info.episodes ?? {};
   const cover = info.info?.cover ?? undefined;
+  let episodesBySeason: Record<string, XtreamEpisode[]> = {};
+  if (Array.isArray(rawEpisodes)) {
+    episodesBySeason = {};
+    for (const ep of rawEpisodes as XtreamEpisode[]) {
+      const key = String(ep.season);
+      (episodesBySeason[key] ??= []).push(ep);
+    }
+  } else {
+    episodesBySeason = rawEpisodes as Record<string, XtreamEpisode[]>;
+  }
   const seasons: Season[] = (info.seasons ?? []).map((s) => ({
     number: s.season_number,
     name: s.name || `Season ${s.season_number}`,

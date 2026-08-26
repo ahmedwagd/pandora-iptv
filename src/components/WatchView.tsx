@@ -12,6 +12,9 @@ interface WatchViewProps {
   epgNext?: EpgProgramme;
   profileId?: string | null;
   onFetchEpg?: (id: string) => Promise<EpgProgramme[]>;
+  zapList?: Channel[];
+  onZap?: (ch: Channel) => void;
+  getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
 }
 
 function formatEpgTime(p: EpgProgramme): string {
@@ -28,11 +31,16 @@ export function WatchView({
   epgNext,
   profileId = null,
   onFetchEpg,
+  zapList,
+  onZap,
+  getEpgForChannel,
 }: WatchViewProps) {
   const { has: hasRem, add: addRem, remove: remRem } = useEpgReminders(profileId);
   const [localEpg, setLocalEpg] = useState<EpgProgramme[]>([]);
-
-  const isLive = channel.kind == null || channel.kind === "live";
+  const [catchupCh, setCatchupCh] = useState<Channel | null>(null);
+  const [catchupProg, setCatchupProg] = useState<EpgProgramme | null>(null);
+  const playingChannel = catchupCh ?? channel;
+  const isLiveChannel = channel.kind == null || channel.kind === "live";
 
   const loadEpg = useCallback(async () => {
     if (!onFetchEpg) return;
@@ -43,12 +51,41 @@ export function WatchView({
   // Fetch EPG for the current channel whenever it changes (live only).
   useEffect(() => {
     setLocalEpg([]);
-    if (isLive && onFetchEpg) void loadEpg();
-  }, [channel.id, isLive, onFetchEpg, loadEpg]);
+    if (isLiveChannel && onFetchEpg) void loadEpg();
+  }, [channel.id, isLiveChannel, onFetchEpg, loadEpg]);
+
+  useEffect(() => {
+    setCatchupCh(null);
+    setCatchupProg(null);
+  }, [channel.id]);
+
+  const handleCatchup = useCallback((p: EpgProgramme) => {
+    const startSec = Math.floor(p.startTime / 1000);
+    const endSec = Math.floor(p.stopTime / 1000);
+    let catchupUrl: string;
+    if (channel.url.includes(".m3u8")) {
+      catchupUrl = channel.url.replace(/\.m3u8(\?.*)?$/, `-${startSec}-${endSec}.m3u8$1`);
+    } else {
+      catchupUrl = `${channel.url}-${startSec}-${endSec}.m3u8`;
+    }
+    const ch: Channel = { ...channel, url: catchupUrl, name: `${channel.name} — ${p.title}` };
+    setCatchupCh(ch);
+    setCatchupProg(p);
+  }, [channel]);
+
+  const wrappedOnZap = useCallback((ch: Channel) => {
+    setCatchupCh(null);
+    setCatchupProg(null);
+    onZap?.(ch);
+  }, [onZap]);
 
   const progs = localEpg.length
     ? localEpg
     : ([epgNow, epgNext].filter(Boolean) as EpgProgramme[]);
+
+  const catchupEnabled = Boolean(channel.catchup);
+  const catchupDays = channel.catchup?.days;
+
   return (
     <div className="watch">
       <header className="watch-bar">
@@ -56,29 +93,33 @@ export function WatchView({
           ←
         </button>
         <div className="watch-bar-info">
-          <span className="watch-title">{channel.name}</span>
+          <span className="watch-title">{playingChannel.name}</span>
           <span className="watch-meta">
             <span className="signal-dot" aria-hidden>
               ●
             </span>{" "}
-            {channel.group} · Live
-            {epgNow && (
+            {channel.group} · {catchupCh ? "Catchup" : "Live"}
+            {catchupProg ? (
+              <span className="watch-epg" title={catchupProg.description}>
+                {" "}· {catchupProg.title} ({formatEpgTime(catchupProg)})
+              </span>
+            ) : epgNow ? (
               <span className="watch-epg" title={epgNow.description}>
-                {" "}
-                · Now: {epgNow.title} ({formatEpgTime(epgNow)})
+                {" "}· Now: {epgNow.title} ({formatEpgTime(epgNow)})
               </span>
-            )}
-            {!epgNow && epgNext && (
+            ) : epgNext ? (
               <span className="watch-epg watch-epg--next">
-                {" "}
-                · Next: {epgNext.title} ({formatEpgTime(epgNext)})
+                {" "}· Next: {epgNext.title} ({formatEpgTime(epgNext)})
               </span>
+            ) : null}
+            {catchupCh && (
+              <button type="button" className="watch-catchup-exit" onClick={() => { setCatchupCh(null); setCatchupProg(null); }}>Back to live</button>
             )}
           </span>
         </div>
       </header>
       <div className="watch-stage">
-        <Player channel={channel} onBack={onBack} profileId={profileId} />
+        <Player channel={playingChannel} onBack={onBack} profileId={profileId} zapList={zapList} onZap={wrappedOnZap} getEpgForChannel={getEpgForChannel} />
       </div>
       {progs.length > 0 && (
         <div className="watch-epg-panel">
@@ -97,6 +138,9 @@ export function WatchView({
                 });
             }}
             hasReminder={(p) => hasRem(channel.id, p.startTime)}
+            onCatchup={catchupEnabled ? handleCatchup : undefined}
+            catchupEnabled={catchupEnabled}
+            catchupDays={catchupDays}
           />
         </div>
       )}

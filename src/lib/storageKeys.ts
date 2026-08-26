@@ -12,6 +12,7 @@
   playbackPositions: "playbackPositions",
   epgReminders: "epgReminders",
   epgEnabled: "epgEnabled",
+  recentSearches: "recentSearches",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys] | string;

@@ -122,9 +122,11 @@ export function Home(props: HomeProps) {
 
   // expiration urgency: red if <7 days or expired
   let expUrgency: "ok" | "warn" | "none" = "none";
+  let isExpired = false;
   const expTs = props.expTimestamp;
   if (expDateFormatted && typeof expTs === "number" && expTs) {
     const days = Math.ceil((expTs - Date.now()) / 86400000);
+    isExpired = days < 0;
     expUrgency = days <= 7 ? "warn" : "ok";
   }
 
@@ -193,11 +195,11 @@ export function Home(props: HomeProps) {
           <div className="home-footer-right">
             {expDateFormatted ? (
               <span
-                className={`home-footer-exp ${expUrgency === "warn" ? "home-footer-exp--warn" : ""}`}
-                title={isTrial ? "Trial account" : undefined}
+                className={`home-footer-exp ${expUrgency === "warn" ? "home-footer-exp--warn" : ""} ${isExpired ? "home-footer-exp--expired" : ""}`}
+                title={isTrial ? "Trial account" : isExpired ? "Subscription expired" : undefined}
               >
                 {isTrial && <span className="home-footer-trial">Trial · </span>}
-                {s.expires} {expDateFormatted}
+                {isExpired ? "Expired" : s.expires} {expDateFormatted}
               </span>
             ) : (
               <span className="home-footer-exp home-footer-exp--none">{s.noExpiration}</span>

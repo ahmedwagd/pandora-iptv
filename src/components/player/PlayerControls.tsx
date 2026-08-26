@@ -23,6 +23,10 @@ interface PlayerControlsProps {
   levels?: Array<{ idx: number; name: string }>;
   currentLevel?: number;
   onSelectLevel?: (idx: number) => void;
+  onZapPrev?: () => void;
+  onZapNext?: () => void;
+  zapOpen?: boolean;
+  onToggleZap?: () => void;
 }
 
 function fmtTime(sec: number): string {
@@ -167,6 +171,12 @@ const IconFullscreen = ({ isFullscreen }: { isFullscreen: boolean }) => (
     )}
   </svg>
 );
+const IconZap = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+    <rect x="3" y="3" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" />
+    <path d="M3 6H13 M3 10H13 M6 3V13 M10 3V13" stroke="currentColor" strokeWidth="1" opacity="0.9" />
+  </svg>
+);
 
 export function PlayerControls({
   videoRef,
@@ -186,6 +196,10 @@ export function PlayerControls({
   levels = [],
   currentLevel = -1,
   onSelectLevel,
+  onZapPrev,
+  onZapNext,
+  zapOpen = false,
+  onToggleZap,
 }: PlayerControlsProps) {
   const { skipDuration } = useSkipDuration();
   const [current, setCurrent] = useState(0);
@@ -480,11 +494,33 @@ export function PlayerControls({
           }
           break;
         case "arrowup":
+          if (onZapPrev && (channel?.kind == null || channel?.kind === "live")) {
+            e.preventDefault();
+            onZapPrev();
+            scheduleHide();
+          } else {
+            e.preventDefault();
+            v.volume = Math.min(1, v.volume + 0.1);
+            v.muted = false;
+          }
+          break;
+        case "arrowdown":
+          if (onZapNext && (channel?.kind == null || channel?.kind === "live")) {
+            e.preventDefault();
+            onZapNext();
+            scheduleHide();
+          } else {
+            e.preventDefault();
+            v.volume = Math.max(0, v.volume - 0.1);
+            if (v.volume === 0) v.muted = true;
+          }
+          break;
+        case "[":
           e.preventDefault();
           v.volume = Math.min(1, v.volume + 0.1);
           v.muted = false;
           break;
-        case "arrowdown":
+        case "]":
           e.preventDefault();
           v.volume = Math.max(0, v.volume - 0.1);
           if (v.volume === 0) v.muted = true;
@@ -511,6 +547,9 @@ export function PlayerControls({
     subtitleId,
     subtitleTracks,
     onSwitchSubtitle,
+    onZapPrev,
+    onZapNext,
+    channel,
   ]);
 
   useEffect(() => {
@@ -933,6 +972,19 @@ export function PlayerControls({
               >
                 <IconFullscreen isFullscreen={isFullscreen} />
               </button>
+              {onToggleZap && (
+                <button
+                  type="button"
+                  className={`pc-btn ${zapOpen ? "is-active" : ""}`}
+                  onClick={onToggleZap}
+                  aria-label="Channel list"
+                  aria-pressed={zapOpen}
+                  data-tip="Channels (Up/Down)"
+                  title="Channels (Up/Down)"
+                >
+                  <IconZap />
+                </button>
+              )}
               {onRetry && (
                 <button
                   type="button"

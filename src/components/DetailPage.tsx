@@ -215,6 +215,8 @@ export function DetailPage(props: DetailProps) {
   const rating = props.kind === "movie" ? props.detail?.rating : props.series.rating;
   const genre = props.kind === "movie" ? props.detail?.genre : props.series.genre;
   const duration = props.kind === "movie" ? props.detail?.duration : undefined;
+  const director = props.kind === "movie" ? props.detail?.director : undefined;
+  const country = props.kind === "movie" ? props.detail?.country : undefined;
   const plot = props.kind === "movie" ? props.detail?.plot : props.series.plot;
   const cast = props.kind === "movie" ? props.detail?.cast : props.series.cast;
 
@@ -343,6 +345,18 @@ export function DetailPage(props: DetailProps) {
                   <>
                     <span className="chip-dot">·</span>
                     <span className="chip-text">{duration}</span>
+                  </>
+                )}
+                {director && (
+                  <>
+                    <span className="chip-dot">·</span>
+                    <span className="chip-text" title={`Director: ${director}`}>{director}</span>
+                  </>
+                )}
+                {country && (
+                  <>
+                    <span className="chip-dot">·</span>
+                    <span className="chip-text">{country}</span>
                   </>
                 )}
                 <span className="chip-dot">·</span>

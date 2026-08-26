@@ -17,7 +17,9 @@ import { useHotkeys } from "./hooks/useHotkeys";
 import { useBlockBrowserHotkeys } from "./hooks/useBlockBrowserHotkeys";
 import { useOnline } from "./hooks/useOnline";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { CommandPalette } from "./components/CommandPalette";
+import { GlobalSearch } from "./components/GlobalSearch";
+import { useRecentSearches } from "./hooks/useRecentSearches";
+import { buildSearchIndex, rankResults } from "./lib/searchIndex";
 import { useParental } from "./hooks/useParental";
 import { useLang } from "./hooks/useLang";
 import { strings } from "./i18n";
@@ -118,6 +120,9 @@ export default function App() {
   const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort, refresh: refreshEpg } =
     useEpg(xtreamCreds, epgEnabled);
   const activeEpg = active ? getEpgForChannel(active.id) : undefined;
+  const { recent: recentSearches, push: pushRecent, clear: clearRecent } = useRecentSearches(activeId);
+  const searchIndex = useMemo(() => buildSearchIndex({ channels, movies, series }), [channels, movies, series]);
+  const globalResults = useMemo(() => rankResults(searchIndex, cmdQuery, { getEpgForChannel }), [searchIndex, cmdQuery, getEpgForChannel]);
 
   const [account, setAccount] = useState<XtreamAccount | null>(null);
   useEffect(() => {
@@ -514,6 +519,39 @@ export default function App() {
     [goHome, enterContent, setScreen, setSmartFilter, handleDisconnect]
   );
 
+  const handleGlobalSelect = useCallback((item: { kind: string; original: Channel | Series; name: string }) => {
+    const q = cmdQuery.trim() || item.name;
+    if (q) pushRecent(q);
+    if (item.kind === "live") {
+      setContentMode("live");
+      setScreen("browse");
+      setSmartFilter("all");
+      setCategory(null);
+      setSearch("");
+      setActive(item.original as Channel);
+    } else if (item.kind === "movie") {
+      openMovieDetail(item.original as Channel);
+    } else {
+      openSeriesDetail(item.original as Series);
+    }
+    setCmdOpen(false);
+  }, [cmdQuery, pushRecent, setContentMode, setScreen, setSmartFilter, setCategory, setSearch, setActive, openMovieDetail, openSeriesDetail]);
+
+  const globalSearchOverlay = cmdOpen ? (
+    <GlobalSearch
+      open={cmdOpen}
+      onClose={() => setCmdOpen(false)}
+      query={cmdQuery}
+      onQuery={setCmdQuery}
+      recent={recentSearches}
+      onRecentClick={(t) => setCmdQuery(t)}
+      onClearRecent={clearRecent}
+      results={globalResults as any}
+      onSelect={handleGlobalSelect as any}
+      commands={paletteCommands}
+    />
+  ) : null;
+
   if (!profilesReady) {
     return (
       <div className="player-empty">
@@ -543,6 +581,7 @@ export default function App() {
 
   if (screen === "home") {
     return (
+      <>
       <Home
         liveCount={channels.length}
         movieCount={movies.length}
@@ -559,11 +598,14 @@ export default function App() {
         expTimestamp={account?.expTimestamp ?? null}
         isTrial={account?.isTrial ?? false}
       />
+      {globalSearchOverlay}
+      </>
     );
   }
 
   if (screen === "settings") {
     return (
+      <>
       <Settings
         profiles={profiles}
         activeId={activeId}
@@ -575,11 +617,14 @@ export default function App() {
         username={xtreamCreds?.username ?? null}
         onDisconnect={handleDisconnect}
       />
+      {globalSearchOverlay}
+      </>
     );
   }
 
   if (screen === "watch" && active) {
     return (
+      <>
       <WatchView
         channel={active}
         onBack={handleExitWatch}
@@ -587,42 +632,53 @@ export default function App() {
         epgNext={activeEpg?.next}
         onFetchEpg={epgPref ? fetchEpgShort : undefined}
         profileId={activeId}
+        zapList={channels}
+        onZap={setActive}
+        getEpgForChannel={getEpgForChannel}
       />
+      {globalSearchOverlay}
+      </>
     );
   }
 
   if (screen === "detail" && detailTarget) {
-    return detailTarget.kind === "movie" ? (
-      <DetailPage
-        kind="movie"
-        channel={detailTarget.channel}
-        detail={movieDetail}
-        detailLoading={movieDetailLoading}
-        onBack={backToBrowse}
-        onWatch={watch}
-        favoriteIds={favoriteIds}
-        onToggleFavorite={toggle}
-        onRefresh={() => loadMovieDetail(detailTarget.channel.id.replace(/^movie:/, ""))}
-        profileId={activeId}
-      />
-    ) : (
-      <DetailPage
-        kind="series"
-        series={detailTarget.series}
-        seasons={seasons}
-        episodesLoading={episodesLoading}
-        onBack={backToBrowse}
-        onWatch={watch}
-        favoriteIds={favoriteIds}
-        onToggleFavorite={toggle}
-        onRefresh={() => openSeries(detailTarget.series)}
-        profileId={activeId}
-      />
+    return (
+      <>
+      {detailTarget.kind === "movie" ? (
+        <DetailPage
+          kind="movie"
+          channel={detailTarget.channel}
+          detail={movieDetail}
+          detailLoading={movieDetailLoading}
+          onBack={backToBrowse}
+          onWatch={watch}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={toggle}
+          onRefresh={() => loadMovieDetail(detailTarget.channel.id.replace(/^movie:/, ""))}
+          profileId={activeId}
+        />
+      ) : (
+        <DetailPage
+          kind="series"
+          series={detailTarget.series}
+          seasons={seasons}
+          episodesLoading={episodesLoading}
+          onBack={backToBrowse}
+          onWatch={watch}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={toggle}
+          onRefresh={() => openSeries(detailTarget.series)}
+          profileId={activeId}
+        />
+      )}
+      {globalSearchOverlay}
+      </>
     );
   }
 
   if (contentMode === "live") {
     return (
+      <>
       <div className="app">
         <Sidebar
           channels={channels}
@@ -642,9 +698,11 @@ export default function App() {
               Loaded: {sourceLabel} · {channels.length} channels
             </div>
           )}
-          <ErrorBoundary><Player channel={active} onBack={goHome} profileId={activeId} /></ErrorBoundary>
+          <ErrorBoundary><Player channel={active} onBack={goHome} profileId={activeId} zapList={channels} onZap={setActive} getEpgForChannel={getEpgForChannel} /></ErrorBoundary>
         </main>
       </div>
+      {globalSearchOverlay}
+      </>
     );
   }
 
@@ -688,15 +746,7 @@ export default function App() {
             )}
           </div>
         </header>
-        {cmdOpen && (
-          <CommandPalette
-            open={cmdOpen}
-            onClose={() => setCmdOpen(false)}
-            commands={paletteCommands}
-            query={cmdQuery}
-            onQuery={setCmdQuery}
-          />
-        )}
+        {globalSearchOverlay}
         {pinAsk && (
           <div className="cmd-palette-backdrop" onClick={() => setPinAsk(null)}>
             <div

@@ -11,6 +11,8 @@ import { useParental } from "../hooks/useParental";
 import { strings, type StringKey } from "../i18n";
 import { useLang } from "../hooks/useLang";
 import { useEpgEnabled } from "../hooks/useEpgEnabled";
+import { useXtreamCreds } from "../hooks/useXtreamCreds";
+import { useUpdater } from "../hooks/useUpdater";
 
 const GROUPS = [
   { id: "profiles", labelKey: "profiles" },
@@ -20,6 +22,7 @@ const GROUPS = [
   { id: "playback", labelKey: "playback" },
   { id: "video", labelKey: "video" },
   { id: "parental", labelKey: "parental" },
+  { id: "updates", labelKey: "updates" },
 ] as const;
 type GroupId = (typeof GROUPS)[number]["id"];
 type Strings = Record<StringKey, string>;
@@ -64,6 +67,35 @@ function ParentalSettings() {
         )}
       </div>
       {p.locked.length > 0 && <p className="set-hint">{s.lockedPrefix} {p.locked.join(", ")}</p>}
+    </div>
+  );
+}
+
+function UpdatesSettings() {
+  const { lang } = useLang();
+  const s = strings[lang];
+  const updater = useUpdater();
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div className="set-row">
+        <span className="set-row-label">{s.currentVersion}</span>
+        <span className="set-row-leader" />
+        <span className="set-row-value">{updater.info?.currentVersion ?? "0.1.0"}</span>
+      </div>
+      {updater.info?.available ? (
+        <>
+          <div className="set-row">
+            <span className="set-row-label">{s.latestVersion}</span>
+            <span className="set-row-leader" />
+            <span className="set-row-value">{updater.info.latestVersion}</span>
+          </div>
+          <p className="set-hint">{s.updateAvailable}{updater.info.body ? ` — ${updater.info.body.slice(0, 120)}` : ""}</p>
+          <button type="button" className="set-btn" onClick={() => updater.install()}>{s.downloadAndInstall}</button>
+        </>
+      ) : (
+        <p className="set-hint">{updater.checking ? s.checking : s.upToDate}</p>
+      )}
+      <button type="button" className="set-opt" onClick={() => updater.check()} disabled={updater.checking}>{s.checkForUpdates}</button>
     </div>
   );
 }
@@ -133,6 +165,8 @@ export function Settings({
   const s = strings[lang];
   const isAr = lang === "ar";
   const [group, setGroup] = useState<GroupId>("profiles");
+  const { creds: savedCreds } = useXtreamCreds(activeId);
+  const [showPwd, setShowPwd] = useState(false);
 
   const expTs = account?.expTimestamp;
   const expDate = account?.expDateFormatted;
@@ -225,6 +259,27 @@ export function Settings({
                   <span className="set-row-leader" />
                   <span className="set-row-value">{account?.username ?? username ?? "—"}</span>
                 </div>
+                {savedCreds && (
+                  <div className="set-row">
+                    <span className="set-row-label">Password</span>
+                    <span className="set-row-leader" />
+                    <span className="set-row-value" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontFamily: "var(--font-mono)", letterSpacing: "0.08em" }}>
+                        {showPwd ? savedCreds.password : "••••••••"}
+                      </span>
+                      <button type="button" className="set-opt" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setShowPwd((v) => !v)}>
+                        {showPwd ? "Hide" : "Show"}
+                      </button>
+                    </span>
+                  </div>
+                )}
+                {savedCreds?.server && (
+                  <div className="set-row">
+                    <span className="set-row-label">Server</span>
+                    <span className="set-row-leader" />
+                    <span className="set-row-value" style={{ fontSize: 12, wordBreak: "break-all" }}>{savedCreds.server}</span>
+                  </div>
+                )}
                 <div className="set-row">
                   <span className="set-row-label">{s.status}</span>
                   <span className="set-row-leader" />
@@ -434,6 +489,18 @@ export function Settings({
               </header>
               <div className="set-card">
                 <ParentalSettings />
+              </div>
+            </section>
+          )}
+
+          {group === "updates" && (
+            <section className="set-group">
+              <header className="set-group-head">
+                <h2 className="set-group-title">{s.updates}</h2>
+                <p className="set-group-desc">{s.updatesDesc}</p>
+              </header>
+              <div className="set-card">
+                <UpdatesSettings />
               </div>
             </section>
           )}

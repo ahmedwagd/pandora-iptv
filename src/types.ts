@@ -4,10 +4,12 @@ export interface Channel {
   id: string; // stable hash of name+url, used for favorites
   name: string;
   url: string;
+  altUrls?: string[]; // backup sources — tried after url exhausts its retries
   logo?: string;
   group: string; // "Uncategorized" if none set
   tvgId?: string;
   kind?: ContentKind; // absent for M3U/live channels
+  catchup?: { days: number; source: string } | null;
 }
 
 export interface PlaylistSource {
@@ -49,6 +51,9 @@ export interface MovieDetail {
   rating?: string;
   year?: string;
   duration?: string;
+  director?: string;
+  country?: string;
+  durationSeconds?: number;
 }
 
 export interface WatchItem {
