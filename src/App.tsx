@@ -298,6 +298,24 @@ export default function App() {
     [contentMode, smartFilter, category, search, movies, series, history, favoriteIds]
   );
 
+  const handleTogglePosterFavorite = useCallback(
+    (id: string) => {
+      if (contentMode === "series") {
+        if (smartFilter === "continue") {
+          const h = history.find((x) => x.id === id);
+          const sid = (h as any)?.seriesId as string | undefined;
+          if (sid) { toggle(`series:${sid}`); return; }
+          toggle(`series:${id}`);
+          return;
+        }
+        toggle(`series:${id}`);
+      } else {
+        toggle(id);
+      }
+    },
+    [contentMode, smartFilter, history, series, seasons, toggle]
+  );
+
   const handleRemoveWatched = useCallback(
     (id: string) => {
       removeHistory(id);
@@ -513,6 +531,8 @@ export default function App() {
           onOpen={handleOpenPoster}
           onRemove={handleRemoveWatched}
           showRemove={smartFilter === "continue"}
+          favoriteIds={favoriteIds}
+          onToggleFavorite={handleTogglePosterFavorite}
           emptyText={
             smartFilter === "favorites"
               ? "No favorites yet — tap ★ to keep it here."

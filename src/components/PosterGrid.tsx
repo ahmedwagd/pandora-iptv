@@ -14,6 +14,8 @@ interface PosterGridProps {
   emptyText?: string;
   onRemove?: (id: string) => void;
   showRemove?: boolean;
+  favoriteIds?: Set<string>;
+  onToggleFavorite?: (id: string) => void;
 }
 
 const PosterCardMemo = memo(function PosterCardMemo({
@@ -21,12 +23,17 @@ const PosterCardMemo = memo(function PosterCardMemo({
   onOpen,
   onRemove,
   showRemove,
+  favoriteIds,
+  onToggleFavorite,
 }: {
   item: PosterCard;
   onOpen: (id: string) => void;
   onRemove?: (id: string) => void;
   showRemove?: boolean;
+  favoriteIds?: Set<string>;
+  onToggleFavorite?: (id: string) => void;
 }) {
+  const isFav = favoriteIds ? favoriteIds.has(item.id) || favoriteIds.has(`series:${item.id}`) : false;
   return (
     <div className="poster-card-wrap">
       <button type="button" className="poster-card" onClick={() => onOpen(item.id)} aria-label={item.name}>
@@ -39,6 +46,18 @@ const PosterCardMemo = memo(function PosterCardMemo({
         />
         <span className="poster-card-title">{item.name}</span>
       </button>
+      {onToggleFavorite && (
+        <button
+          type="button"
+          className={`poster-fav ${isFav ? "is-fav" : ""}`}
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }}
+          aria-label={isFav ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+          aria-pressed={isFav}
+          title={isFav ? "Remove from favorites" : "Add to favorites"}
+        >
+          {isFav ? "★" : "☆"}
+        </button>
+      )}
       {showRemove && onRemove && (
         <button type="button" className="poster-remove" onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} aria-label={`Remove ${item.name} from watched`} title="Remove from watched" data-tip="Remove">
           ✕
@@ -48,7 +67,7 @@ const PosterCardMemo = memo(function PosterCardMemo({
   );
 });
 
-export function PosterGrid({ items, onOpen, emptyText, onRemove, showRemove }: PosterGridProps) {
+export function PosterGrid({ items, onOpen, emptyText, onRemove, showRemove, favoriteIds, onToggleFavorite }: PosterGridProps) {
   if (items.length === 0) {
     return (
       <div className="poster-grid-empty">
@@ -60,7 +79,7 @@ export function PosterGrid({ items, onOpen, emptyText, onRemove, showRemove }: P
   return (
     <div className="poster-grid">
       {items.map((item) => (
-        <PosterCardMemo key={item.id} item={item} onOpen={onOpen} onRemove={onRemove} showRemove={showRemove} />
+        <PosterCardMemo key={item.id} item={item} onOpen={onOpen} onRemove={onRemove} showRemove={showRemove} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />
       ))}
     </div>
   );
