@@ -3,13 +3,16 @@ import Hls from "hls.js";
 import type { Channel } from "../types";
 import { ColorBar } from "./ColorBar";
 import { PlayerControls } from "./player/PlayerControls";
+import { ResumePrompt } from "./player/ResumePrompt";
 import { useVideoZoom } from "../hooks/useVideoZoom";
 import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
+import { usePlaybackResume } from "../hooks/usePlaybackResume";
 
 interface PlayerProps {
   channel: Channel | null;
   fitMode?: string;
   onBack?: () => void;
+  profileId?: string | null;
 }
 
 type PlayerStatus = "idle" | "loading" | "buffering" | "reconnecting" | "error";
@@ -20,7 +23,7 @@ export interface TrackInfo {
   lang?: string;
 }
 
-export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
+export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const retryCountRef = useRef(0);
@@ -38,6 +41,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
   const [subtitleTracks, setSubtitleTracks] = useState<TrackInfo[]>([]);
   const [audioId, setAudioId] = useState<number>(-1);
   const [subtitleId, setSubtitleId] = useState<number>(-1);
+  const { getPosition, savePosition, clearPosition } = usePlaybackResume(profileId);
+  const getPositionRef = useRef(getPosition);
+  const hasPromptedRef = useRef<string | null>(null);
+  const [resumePrompt, setResumePrompt] = useState<{ position: number; duration: number } | null>(null);
+  const pendingResumeRef = useRef<{ position: number; duration: number } | null>(null);
 
   const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
     if (!v) return;
@@ -47,6 +55,71 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
   useEffect(() => {
     applySpeed(videoRef.current, speed);
   }, [speed, applySpeed, channel]);
+
+  const isResumable = useCallback(
+    (pos: number, dur: number, kind?: string) => {
+      if (kind === "live") return false;
+      if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
+      if (pos < 10) return false;
+      if (dur - pos < 15) return false;
+      const pct = pos / dur;
+      return pct > 0.01 && pct < 0.985;
+    },
+    []
+  );
+  const isResumableRef = useRef(isResumable);
+  useEffect(() => { isResumableRef.current = isResumable; }, [isResumable]);
+  useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
+
+  const tryShowResumePrompt = useCallback(
+    (kind?: string) => {
+      if (!channel) return;
+      if (hasPromptedRef.current === channel.id) return;
+      const saved = getPositionRef.current(channel.id);
+      if (!saved) return;
+      if (!isResumableRef.current(saved.position, saved.duration, kind ?? channel.kind)) {
+        // stale (near end or too early) — clean up
+        if (saved.duration - saved.position < 15) clearPosition(channel.id);
+        return;
+      }
+      // delay showing until duration is known; if we already have duration, show now
+      const v = videoRef.current;
+      const dur = v?.duration && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : saved.duration;
+      pendingResumeRef.current = { position: saved.position, duration: dur };
+      hasPromptedRef.current = channel.id;
+      // pause immediately so user sees prompt instead of autoplaying from 0
+      try {
+        v?.pause();
+      } catch {}
+      setResumePrompt({ position: saved.position, duration: dur });
+    },
+    [channel, clearPosition]
+  );
+
+  const handleResume = useCallback(() => {
+    const v = videoRef.current;
+    const r = resumePrompt ?? pendingResumeRef.current;
+    if (!v || !r) return;
+    try {
+      v.currentTime = r.position;
+    } catch {}
+    setResumePrompt(null);
+    pendingResumeRef.current = null;
+    void v.play().catch(() => {});
+  }, [resumePrompt]);
+
+  const handleRestart = useCallback(() => {
+    const v = videoRef.current;
+    if (channel) clearPosition(channel.id);
+    if (v) {
+      try {
+        v.currentTime = 0;
+      } catch {}
+      void v.play().catch(() => {});
+    }
+    setResumePrompt(null);
+    pendingResumeRef.current = null;
+  }, [channel, clearPosition]);
 
   const refreshTracks = useCallback(() => {
     const hls = hlsRef.current;
@@ -99,13 +172,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
   const toggleFullscreen = useCallback(async () => {
     const v = videoRef.current;
     if (!v) return;
+    const playerEl = v.parentElement as HTMLElement | null;
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
-      else {
-        const target = v.parentElement ?? v;
-        if (target.requestFullscreen) await target.requestFullscreen();
-        else await v.requestFullscreen();
-      }
+      else if (playerEl && playerEl.requestFullscreen) await playerEl.requestFullscreen();
+      else await v.requestFullscreen();
     } catch {}
   }, []);
 
@@ -143,9 +214,18 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         setStatus("buffering");
-        video.play().catch(() => {});
         refreshTracks();
         applySpeed(video, speedRef.current);
+        // resume prompt — check saved position before autoplaying
+        const saved = channelRef.current ? getPosition(channelRef.current.id) : undefined;
+        if (saved && isResumable(saved.position, saved.duration, channelRef.current?.kind)) {
+          const v = videoRef.current;
+          pendingResumeRef.current = { position: saved.position, duration: saved.duration };
+          try { v?.pause(); } catch {}
+          setResumePrompt({ position: saved.position, duration: saved.duration });
+        } else {
+          video.play().catch(() => {});
+        }
       });
       const onTracks = () => refreshTracks();
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED as any, onTracks);
@@ -231,7 +311,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
     const onWaiting = () => setStatus((s) => (s === "error" ? s : "buffering"));
     const onPlaying = () => { setStatus("idle"); refreshTracks(); applySpeed(video, speedRef.current); };
     const onCanPlay = () => setStatus((s) => (s === "loading" || s === "buffering" ? "idle" : s));
-    const onLoadedMeta = () => { refreshTracks(); applySpeed(video, speedRef.current); };
+    const onLoadedMeta = () => {
+      refreshTracks();
+      applySpeed(video, speedRef.current);
+      if (!isLikelyHls || !Hls.isSupported()) tryShowResumePrompt(channel.kind);
+    };
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
@@ -280,6 +364,46 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
     };
   }, [channel, attachHls]);
 
+  // periodic resume save — only for VOD (movie/episode), not live
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !channel) return;
+    if (channel.kind === "live") return;
+    if (resumePrompt) return;
+    let saveTimer: number | null = null;
+    const maybeSave = () => {
+      const pos = v.currentTime;
+      const dur = v.duration;
+      if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return;
+      if (dur - pos < 10) {
+        clearPosition(channel.id);
+        return;
+      }
+      savePosition(channel.id, pos, dur);
+    };
+    const onTime = () => {
+      if (saveTimer !== null) return;
+      saveTimer = window.setTimeout(() => {
+        saveTimer = null;
+        maybeSave();
+      }, 1000);
+    };
+    const onPause = () => maybeSave();
+    const onEnded = () => clearPosition(channel.id);
+    v.addEventListener("timeupdate", onTime);
+    v.addEventListener("pause", onPause);
+    v.addEventListener("ended", onEnded);
+    const interval = window.setInterval(maybeSave, 5000);
+    return () => {
+      v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("pause", onPause);
+      v.removeEventListener("ended", onEnded);
+      if (saveTimer !== null) window.clearTimeout(saveTimer);
+      window.clearInterval(interval);
+      maybeSave();
+    };
+  }, [channel, savePosition, clearPosition, resumePrompt]);
+
   if (!channel) {
     return (
       <div className="player-empty">
@@ -320,6 +444,15 @@ export function Player({ channel, fitMode: fitModeProp, onBack }: PlayerProps) {
         onSwitchAudio={switchAudio}
         onSwitchSubtitle={switchSubtitle}
       />
+      {resumePrompt && (
+        <ResumePrompt
+          position={resumePrompt.position}
+          duration={resumePrompt.duration}
+          title={channel.name}
+          onResume={handleResume}
+          onRestart={handleRestart}
+        />
+      )}
       {status === "loading" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />

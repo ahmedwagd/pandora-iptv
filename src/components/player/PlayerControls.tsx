@@ -229,16 +229,13 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   const toggleFullscreen = useCallback(async () => {
     const v = videoRef.current;
     if (!v) return;
+    const playerEl = (controlsRef.current?.parentElement ?? v.parentElement) as HTMLElement | null;
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
+      else if (playerEl && playerEl.requestFullscreen) await playerEl.requestFullscreen();
       else await v.requestFullscreen();
     } catch {
-      const c = controlsRef.current?.parentElement;
-      if (c && !document.fullscreenElement) {
-        try {
-          await c.requestFullscreen();
-        } catch {}
-      }
+      try { if (playerEl && !document.fullscreenElement) await playerEl.requestFullscreen(); } catch {}
     }
     scheduleHide();
   }, [videoRef, scheduleHide]);
@@ -409,6 +406,17 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   const pipSupported = typeof document !== "undefined" && Boolean(document.pictureInPictureEnabled);
 
   return (
+    <>
+      {isFullscreen && (
+        <div className={`pc-top-bar ${visible ? "is-visible" : "is-hidden"}`}>
+
+          <button type="button" className="pc-back" onClick={handleBack} aria-label="Back" data-tip="Back (Esc)">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M10 13L5 8L10 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </button>
+          <span className="pc-top-title" title={channel?.name}>{channel?.name}</span>
+          <button type="button" className="pc-top-exit" onClick={handleBack} aria-label="Exit fullscreen" data-tip="Exit fullscreen">✕</button>
+        </div>
+      )}
     <div
       ref={controlsRef}
       className={`player-controls ${visible ? "is-visible" : "is-hidden"}`}
@@ -427,15 +435,6 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
       role="toolbar"
       aria-label="Playback controls"
     >
-      {isFullscreen && (
-        <div className="pc-top-bar">
-          <button type="button" className="pc-back" onClick={handleBack} aria-label="Back" data-tip="Back (Esc)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M10 13L5 8L10 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-          <span className="pc-top-title" title={channel?.name}>{channel?.name}</span>
-          <button type="button" className="pc-top-exit" onClick={handleBack} aria-label="Exit fullscreen" data-tip="Exit fullscreen">✕</button>
-        </div>
-      )}
       <div className="pc-center">
         <button
           type="button"
@@ -607,5 +606,6 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
         </div>
       </div>
     </div>
+    </>
   );
 }

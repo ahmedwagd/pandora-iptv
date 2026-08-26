@@ -389,6 +389,7 @@ export default function App() {
         onBack={() => setScreen(detailTarget ? "detail" : "browse")}
         epgNow={activeEpg?.now}
         epgNext={activeEpg?.next}
+        profileId={activeId}
       />
     );
   }
@@ -441,7 +442,7 @@ export default function App() {
               Loaded: {sourceLabel} · {channels.length} channels
             </div>
           )}
-          <Player channel={active} onBack={goHome} />
+          <Player channel={active} onBack={goHome} profileId={activeId} />
         </main>
       </div>
     );

@@ -9,6 +9,7 @@
   videoZoom: "videoZoom",
   playbackSpeed: "playbackSpeed",
   subtitleEnabled: "subtitleEnabled",
+  playbackPositions: "playbackPositions",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys] | string;

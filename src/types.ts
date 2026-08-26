@@ -58,6 +58,16 @@ export interface WatchItem {
   kind: ContentKind;
   url: string;
   watchedAt: number;
+  /** last known playback position in seconds (VOD only) */
+  position?: number;
+  /** total duration in seconds at time of save */
+  duration?: number;
+}
+
+export interface PlaybackPosition {
+  position: number;
+  duration: number;
+  updatedAt: number;
 }
 
 export type ContentMode = "live" | "movie" | "series";

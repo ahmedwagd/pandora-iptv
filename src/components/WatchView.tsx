@@ -7,6 +7,7 @@ interface WatchViewProps {
   onBack: () => void;
   epgNow?: EpgProgramme;
   epgNext?: EpgProgramme;
+  profileId?: string | null;
 }
 
 function formatEpgTime(p: EpgProgramme): string {
@@ -16,7 +17,7 @@ function formatEpgTime(p: EpgProgramme): string {
   return `${pad(s.getHours())}:${pad(s.getMinutes())}–${pad(e.getHours())}:${pad(e.getMinutes())}`;
 }
 
-export function WatchView({ channel, onBack, epgNow, epgNext }: WatchViewProps) {
+export function WatchView({ channel, onBack, epgNow, epgNext, profileId = null }: WatchViewProps) {
   return (
     <div className="watch">
       <header className="watch-bar">
@@ -42,7 +43,7 @@ export function WatchView({ channel, onBack, epgNow, epgNext }: WatchViewProps) 
         </div>
       </header>
       <div className="watch-stage">
-        <Player channel={channel} onBack={onBack} />
+        <Player channel={channel} onBack={onBack} profileId={profileId} />
       </div>
     </div>
   );
