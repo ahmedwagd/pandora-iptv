@@ -9,7 +9,6 @@ interface PlayerControlsProps {
   onRetry?: () => void;
   fitMode?: string;
   onCycleFitMode?: () => void;
-
   speed?: number;
   onSpeedChange?: (s: number) => void;
   audioTracks?: TrackInfo[];
@@ -18,7 +17,12 @@ interface PlayerControlsProps {
   subtitleId?: number;
   onSwitchAudio?: (id: number) => void;
   onSwitchSubtitle?: (id: number) => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
   onBack?: () => void;
+  levels?: Array<{ idx: number; name: string }>;
+  currentLevel?: number;
+  onSelectLevel?: (idx: number) => void;
 }
 
 function fmtTime(sec: number): string {
@@ -65,11 +69,27 @@ const IconSkipFwd = () => (
 const IconVolume = ({ muted, level }: { muted: boolean; level: number }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
     {muted || level === 0 ? (
-      <path d="M9 4L6 6H3V10H6L9 12V4Z M11 6L13 8L11 10 M13 5L15 8L13 11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M9 4L6 6H3V10H6L9 12V4Z M11 6L13 8L11 10 M13 5L15 8L13 11"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     ) : level < 0.5 ? (
-      <path d="M9 4L6 6H3V10H6L9 12V4Z M10.5 6.5C11.2 7.2 11.2 8.8 10.5 9.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M9 4L6 6H3V10H6L9 12V4Z M10.5 6.5C11.2 7.2 11.2 8.8 10.5 9.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     ) : (
-      <path d="M9 4L6 6H3V10H6L9 12V4Z M10.5 6C11.6 7 11.6 9 10.5 10 M12 4.5C13.8 6.2 13.8 9.8 12 11.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M9 4L6 6H3V10H6L9 12V4Z M10.5 6C11.6 7 11.6 9 10.5 10 M12 4.5C13.8 6.2 13.8 9.8 12 11.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     )}
   </svg>
 );
@@ -81,8 +101,17 @@ const IconCC = () => (
 );
 const IconAudio = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <path d="M8 3C8 3 6 5 6 7C6 9 8 11 8 11C8 11 10 9 10 7C10 5 8 3 8 3Z" stroke="currentColor" strokeWidth="1.2" />
-    <path d="M4 8C4 11 6 13 8 13C10 13 12 11 12 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <path
+      d="M8 3C8 3 6 5 6 7C6 9 8 11 8 11C8 11 10 9 10 7C10 5 8 3 8 3Z"
+      stroke="currentColor"
+      strokeWidth="1.2"
+    />
+    <path
+      d="M4 8C4 11 6 13 8 13C10 13 12 11 12 8"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+    />
   </svg>
 );
 const IconSpeed = () => (
@@ -94,8 +123,23 @@ const IconSpeed = () => (
 );
 const IconFit = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-    <path d="M3 6V3H6 M10 3H13V6 M13 10V13H10 M6 13H3V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-    <rect x="5" y="5" width="6" height="6" rx="0.5" stroke="currentColor" strokeWidth="1.2" opacity="0.7" />
+    <path
+      d="M3 6V3H6 M10 3H13V6 M13 10V13H10 M6 13H3V10"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <rect
+      x="5"
+      y="5"
+      width="6"
+      height="6"
+      rx="0.5"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      opacity="0.7"
+    />
   </svg>
 );
 const IconPip = () => (
@@ -107,14 +151,42 @@ const IconPip = () => (
 const IconFullscreen = ({ isFullscreen }: { isFullscreen: boolean }) => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
     {isFullscreen ? (
-      <path d="M6 3H3V6 M10 3H13V6 M6 13H3V10 M10 13H13V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M6 3H3V6 M10 3H13V6 M6 13H3V10 M10 13H13V10"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     ) : (
-      <path d="M3 6V3H6 M10 3H13V6 M13 10V13H10 M6 13H3V10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M3 6V3H6 M10 3H13V6 M13 10V13H10 M6 13H3V10"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
     )}
   </svg>
 );
 
-export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain", onCycleFitMode, speed = 1, onSpeedChange, audioTracks = [], subtitleTracks = [], audioId = -1, subtitleId = -1, onSwitchAudio, onSwitchSubtitle, onBack }: PlayerControlsProps) {
+export function PlayerControls({
+  videoRef,
+  channel,
+  onRetry,
+  fitMode = "contain",
+  onCycleFitMode,
+  speed = 1,
+  onSpeedChange,
+  audioTracks = [],
+  subtitleTracks = [],
+  audioId = -1,
+  subtitleId = -1,
+  onSwitchAudio,
+  onSwitchSubtitle,
+  onBack,
+  levels = [],
+  currentLevel = -1,
+  onSelectLevel,
+}: PlayerControlsProps) {
   const { skipDuration } = useSkipDuration();
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -127,11 +199,16 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   const [speedOpen, setSpeedOpen] = useState(false);
   const [audioOpen, setAudioOpen] = useState(false);
   const [subsOpen, setSubsOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
   const [seekHover, setSeekHover] = useState<{ time: number; left: number } | null>(null);
   const hideTimer = useRef<number | null>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
 
-  const isLive = channel?.kind === "live" || !Number.isFinite(duration) || duration === 0 || duration === Infinity;
+  const isLive =
+    channel?.kind === "live" ||
+    !Number.isFinite(duration) ||
+    duration === 0 ||
+    duration === Infinity;
   const seekable = !isLive && duration > 0;
 
   const scheduleHide = useCallback(() => {
@@ -236,7 +313,9 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
       else if (playerEl && playerEl.requestFullscreen) await playerEl.requestFullscreen();
       else await v.requestFullscreen();
     } catch {
-      try { if (playerEl && !document.fullscreenElement) await playerEl.requestFullscreen(); } catch {}
+      try {
+        if (playerEl && !document.fullscreenElement) await playerEl.requestFullscreen();
+      } catch {}
     }
     scheduleHide();
   }, [videoRef, scheduleHide]);
@@ -246,7 +325,8 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
     if (!v) return;
     try {
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
-      else if (document.pictureInPictureEnabled && v.readyState > 0) await v.requestPictureInPicture();
+      else if (document.pictureInPictureEnabled && v.readyState > 0)
+        await v.requestPictureInPicture();
     } catch {}
     scheduleHide();
   }, [videoRef, scheduleHide]);
@@ -282,7 +362,8 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   }, [toggleVisible]);
 
   useEffect(() => {
-    const isInteractive = (el: HTMLElement | null) => !!el?.closest("button, input, [role=\"slider\"]");
+    const isInteractive = (el: HTMLElement | null) =>
+      !!el?.closest('button, input, [role="slider"]');
     const isInPlayer = (target: HTMLElement | null) => {
       if (!target) return false;
       const playerEl = target.closest?.(".player") as HTMLElement | null;
@@ -303,7 +384,8 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   useEffect(() => {
     const playerEl = videoRef.current?.parentElement as HTMLElement | null;
     if (!playerEl) return;
-    const isInteractive = (el: HTMLElement | null) => !!el?.closest("button, input, [role=\"slider\"]");
+    const isInteractive = (el: HTMLElement | null) =>
+      !!el?.closest('button, input, [role="slider"]');
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (isInteractive(target)) return;
@@ -319,7 +401,11 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
+      if (
+        t &&
+        (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)
+      )
+        return;
       const v = videoRef.current;
       if (!v) return;
       switch (e.key.toLowerCase()) {
@@ -355,7 +441,7 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
           e.preventDefault();
           {
             const idx = SPEEDS.indexOf(speed);
-            if (idx > 0) onSpeedChange?.(SPEEDS[idx-1]);
+            if (idx > 0) onSpeedChange?.(SPEEDS[idx - 1]);
           }
           scheduleHide();
           break;
@@ -363,7 +449,7 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
           e.preventDefault();
           {
             const idx = SPEEDS.indexOf(speed);
-            if (idx < SPEEDS.length-1) onSpeedChange?.(SPEEDS[idx+1]);
+            if (idx < SPEEDS.length - 1) onSpeedChange?.(SPEEDS[idx + 1]);
           }
           scheduleHide();
           break;
@@ -397,10 +483,31 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [videoRef, togglePlay, toggleMute, toggleFullscreen, togglePiP, seekable, duration, skipDuration, scheduleHide, onCycleFitMode, speed, onSpeedChange, subtitleId, subtitleTracks, onSwitchSubtitle]);
+  }, [
+    videoRef,
+    togglePlay,
+    toggleMute,
+    toggleFullscreen,
+    togglePiP,
+    seekable,
+    duration,
+    skipDuration,
+    scheduleHide,
+    onCycleFitMode,
+    speed,
+    onSpeedChange,
+    subtitleId,
+    subtitleTracks,
+    onSwitchSubtitle,
+  ]);
 
   useEffect(() => {
-    if (!visible) { setSpeedOpen(false); setAudioOpen(false); setSubsOpen(false); }
+    if (!visible) {
+      setSpeedOpen(false);
+      setAudioOpen(false);
+      setSubsOpen(false);
+      setQualityOpen(false);
+    }
   }, [visible]);
 
   if (!channel) return null;
@@ -410,220 +517,425 @@ export function PlayerControls({ videoRef, channel, onRetry, fitMode = "contain"
     <>
       {isFullscreen && (
         <div className={`pc-top-bar ${visible ? "is-visible" : "is-hidden"}`}>
-
-          <button type="button" className="pc-back" onClick={handleBack} aria-label="Back" data-tip="Back (Esc)">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden><path d="M10 13L5 8L10 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <button
+            type="button"
+            className="pc-back"
+            onClick={handleBack}
+            aria-label="Back"
+            data-tip="Back (Esc)"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path
+                d="M10 13L5 8L10 3"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
-          <span className="pc-top-title" title={channel?.name}>{channel?.name}</span>
-          <button type="button" className="pc-top-exit" onClick={handleBack} aria-label="Exit fullscreen" data-tip="Exit fullscreen">✕</button>
+          <span className="pc-top-title" title={channel?.name}>
+            {channel?.name}
+          </span>
+          <button
+            type="button"
+            className="pc-top-exit"
+            onClick={handleBack}
+            aria-label="Exit fullscreen"
+            data-tip="Exit fullscreen"
+          >
+            ✕
+          </button>
         </div>
       )}
-    <div
-      ref={controlsRef}
-      className={`player-controls ${visible ? "is-visible" : "is-hidden"}`}
-      onMouseMove={scheduleHide}
-      onMouseLeave={() => {
-        if (!paused && hideTimer.current) window.clearTimeout(hideTimer.current);
-        if (!paused) hideTimer.current = window.setTimeout(() => setVisible(false), 800);
-      }}
-      onDoubleClick={() => { void toggleFullscreen(); }}
-      onClick={(e) => {
-        const target = e.target as HTMLElement | null;
-        if (target?.closest("button, input, [role=\"slider\"]")) return;
-        guardedToggle();
-      }}
-      onContextMenu={(e) => e.preventDefault()}
-      role="toolbar"
-      aria-label="Playback controls"
-    >
-      <div className="pc-center">
-        <button
-          type="button"
-          className="pc-btn pc-btn--skip"
-          onClick={skipBack}
-          aria-label={`Back ${skipDuration} seconds`}
-          data-tip={`Back ${skipDuration}s (Left)`}
-          title={`Back ${skipDuration}s`}
-          disabled={!seekable && current <= 0}
-        >
-          <IconSkipBack />
-          <span className="pc-skip-label">{skipDuration}</span>
-        </button>
-        <button type="button" className="pc-btn pc-btn--center" onClick={togglePlay} aria-label={paused ? "Play" : "Pause"} data-tip={paused ? "Play (Space)" : "Pause (Space)"}>
-          {paused ? <IconPlay /> : <IconPause />}
-        </button>
-        <button
-          type="button"
-          className="pc-btn pc-btn--skip"
-          onClick={skipForward}
-          aria-label={`Forward ${skipDuration} seconds`}
-          data-tip={`Forward ${skipDuration}s (Right)`}
-          title={`Forward ${skipDuration}s`}
-          disabled={!seekable && isLive}
-        >
-          <span className="pc-skip-label">{skipDuration}</span>
-          <IconSkipFwd />
-        </button>
-      </div>
-
-      <div className="pc-bottom">
-        <div className="pc-progress-wrap">
-          <div className="pc-time">
-            {isLive ? <span className="pc-live"><span className="pc-live-dot" />Live</span> : <span>{fmtTime(current)} <span className="pc-time-sep">/</span> {fmtTime(duration)}</span>}
-          </div>
-          {seekable ? (
-            <div
-              className="pc-seek-wrap"
-              onMouseMove={(e) => {
-                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const pct = Math.max(0, Math.min(1, x / rect.width));
-                setSeekHover({ time: pct * duration, left: pct * 100 });
-              }}
-              onMouseLeave={() => setSeekHover(null)}
-            >
-              {seekHover && (
-                <div className="pc-seek-tip" style={{ left: `${seekHover.left}%` } as React.CSSProperties} aria-hidden>
-                  {fmtTime(seekHover.time)}
-                </div>
-              )}
-              <input
-                className="pc-seek"
-                type="range"
-                role="slider"
-                aria-label="Seek"
-                aria-valuemin={0}
-                aria-valuemax={duration || 0}
-                aria-valuenow={Math.floor(current)}
-                min={0}
-                max={duration || 0}
-                step={0.1}
-                value={current}
-                onChange={handleSeek}
-                style={{ background: `linear-gradient(to right, var(--signal) 0%, var(--signal) ${duration ? (current / duration) * 100 : 0}%, rgba(255,255,255,0.16) ${duration ? (current / duration) * 100 : 0}%, rgba(255,255,255,0.16) 100%)` } as React.CSSProperties}
-              />
-            </div>
-          ) : (
-            <div className="pc-seek pc-seek--live" aria-hidden />
-          )}
+      <div
+        ref={controlsRef}
+        className={`player-controls ${visible ? "is-visible" : "is-hidden"}`}
+        onMouseMove={scheduleHide}
+        onMouseLeave={() => {
+          if (!paused && hideTimer.current) window.clearTimeout(hideTimer.current);
+          if (!paused) hideTimer.current = window.setTimeout(() => setVisible(false), 800);
+        }}
+        onDoubleClick={() => {
+          void toggleFullscreen();
+        }}
+        onClick={(e) => {
+          const target = e.target as HTMLElement | null;
+          if (target?.closest('button, input, [role="slider"]')) return;
+          guardedToggle();
+        }}
+        onContextMenu={(e) => e.preventDefault()}
+        role="toolbar"
+        aria-label="Playback controls"
+      >
+        <div className="pc-center">
+          <button
+            type="button"
+            className="pc-btn pc-btn--skip"
+            onClick={skipBack}
+            aria-label={`Back ${skipDuration} seconds`}
+            data-tip={`Back ${skipDuration}s (Left)`}
+            title={`Back ${skipDuration}s`}
+            disabled={!seekable && current <= 0}
+          >
+            <IconSkipBack />
+            <span className="pc-skip-label">{skipDuration}</span>
+          </button>
+          <button
+            type="button"
+            className="pc-btn pc-btn--center"
+            onClick={togglePlay}
+            aria-label={paused ? "Play" : "Pause"}
+            data-tip={paused ? "Play (Space)" : "Pause (Space)"}
+          >
+            {paused ? <IconPlay /> : <IconPause />}
+          </button>
+          <button
+            type="button"
+            className="pc-btn pc-btn--skip"
+            onClick={skipForward}
+            aria-label={`Forward ${skipDuration} seconds`}
+            data-tip={`Forward ${skipDuration}s (Right)`}
+            title={`Forward ${skipDuration}s`}
+            disabled={!seekable && isLive}
+          >
+            <span className="pc-skip-label">{skipDuration}</span>
+            <IconSkipFwd />
+          </button>
         </div>
 
-        <div className="player-controls-row">
-          <div className="pc-group pc-group--primary">
-            <button type="button" className="pc-btn pc-btn--play" onClick={togglePlay} aria-label={paused ? "Play" : "Pause"} data-tip={paused ? "Play (k)" : "Pause (k)"}>
-              {paused ? <IconPlay /> : <IconPause />}
-            </button>
-            <button
-              type="button"
-              className="pc-btn pc-btn--mute"
-              onClick={toggleMute}
-              data-tip={muted || volume === 0 ? "Unmute (m)" : "Mute (m)"}
-              aria-label={muted || volume === 0 ? "Unmute" : "Mute"}
-            >
-              <IconVolume muted={muted || volume === 0} level={muted ? 0 : volume} />
-            </button>
-            <input
-              className="pc-volume"
-              type="range"
-              aria-label="Volume"
-              min={0}
-              max={1}
-              step={0.05}
-              value={muted ? 0 : volume}
-              onChange={handleVolume}
-            />
-          </div>
-
-          <div className="pc-divider" aria-hidden />
-
-          <div className="pc-group pc-group--media">
-            <div className="pc-menu-wrap">
-              <button type="button" className={`pc-btn ${subtitleId !== -1 ? "is-active" : ""}`} onClick={() => { setSubsOpen(!subsOpen); setAudioOpen(false); setSpeedOpen(false); scheduleHide(); }} aria-label="Subtitles" data-tip="Subtitles (C)" title="Subtitles (C)">
-                <IconCC />
-              </button>
-              {subsOpen && (
-                <div className="pc-menu">
-                  <button type="button" className={`pc-menu-item ${subtitleId === -1 ? "active" : ""}`} onClick={() => { onSwitchSubtitle?.(-1); setSubsOpen(false); scheduleHide(); }}>
-                    Off
-                  </button>
-                  {subtitleTracks.length === 0 && <div className="pc-menu-empty">No subtitles</div>}
-                  {subtitleTracks.map((t) => (
-                    <button key={t.id} type="button" className={`pc-menu-item ${subtitleId === t.id ? "active" : ""}`} onClick={() => { onSwitchSubtitle?.(t.id); setSubsOpen(false); scheduleHide(); }}>
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
+        <div className="pc-bottom">
+          <div className="pc-progress-wrap">
+            <div className="pc-time">
+              {isLive ? (
+                <span className="pc-live">
+                  <span className="pc-live-dot" />
+                  Live
+                </span>
+              ) : (
+                <span>
+                  {fmtTime(current)} <span className="pc-time-sep">/</span> {fmtTime(duration)}
+                </span>
               )}
             </div>
-            <div className="pc-menu-wrap">
-              <button type="button" className="pc-btn" onClick={() => { setAudioOpen(!audioOpen); setSubsOpen(false); setSpeedOpen(false); scheduleHide(); }} aria-label="Audio track" data-tip="Audio" title="Audio">
-                <IconAudio />
+            {seekable ? (
+              <div
+                className="pc-seek-wrap"
+                onMouseMove={(e) => {
+                  const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const pct = Math.max(0, Math.min(1, x / rect.width));
+                  setSeekHover({ time: pct * duration, left: pct * 100 });
+                }}
+                onMouseLeave={() => setSeekHover(null)}
+              >
+                {seekHover && (
+                  <div
+                    className="pc-seek-tip"
+                    style={{ left: `${seekHover.left}%` } as React.CSSProperties}
+                    aria-hidden
+                  >
+                    {fmtTime(seekHover.time)}
+                  </div>
+                )}
+                <input
+                  className="pc-seek"
+                  type="range"
+                  role="slider"
+                  aria-label="Seek"
+                  aria-valuemin={0}
+                  aria-valuemax={duration || 0}
+                  aria-valuenow={Math.floor(current)}
+                  min={0}
+                  max={duration || 0}
+                  step={0.1}
+                  value={current}
+                  onChange={handleSeek}
+                  style={
+                    {
+                      background: `linear-gradient(to right, var(--signal) 0%, var(--signal) ${duration ? (current / duration) * 100 : 0}%, rgba(255,255,255,0.16) ${duration ? (current / duration) * 100 : 0}%, rgba(255,255,255,0.16) 100%)`,
+                    } as React.CSSProperties
+                  }
+                />
+              </div>
+            ) : (
+              <div className="pc-seek pc-seek--live" aria-hidden />
+            )}
+          </div>
+
+          <div className="player-controls-row">
+            <div className="pc-group pc-group--primary">
+              <button
+                type="button"
+                className="pc-btn pc-btn--play"
+                onClick={togglePlay}
+                aria-label={paused ? "Play" : "Pause"}
+                data-tip={paused ? "Play (k)" : "Pause (k)"}
+              >
+                {paused ? <IconPlay /> : <IconPause />}
               </button>
-              {audioOpen && (
-                <div className="pc-menu">
-                  {audioTracks.length === 0 && <div className="pc-menu-empty">No alt audio</div>}
-                  {audioTracks.map((t) => (
-                    <button key={t.id} type="button" className={`pc-menu-item ${audioId === t.id ? "active" : ""}`} onClick={() => { onSwitchAudio?.(t.id); setAudioOpen(false); scheduleHide(); }}>
-                      {t.label}
+              <button
+                type="button"
+                className="pc-btn pc-btn--mute"
+                onClick={toggleMute}
+                data-tip={muted || volume === 0 ? "Unmute (m)" : "Mute (m)"}
+                aria-label={muted || volume === 0 ? "Unmute" : "Mute"}
+              >
+                <IconVolume muted={muted || volume === 0} level={muted ? 0 : volume} />
+              </button>
+              <input
+                className="pc-volume"
+                type="range"
+                aria-label="Volume"
+                min={0}
+                max={1}
+                step={0.05}
+                value={muted ? 0 : volume}
+                onChange={handleVolume}
+              />
+            </div>
+
+            <div className="pc-divider" aria-hidden />
+
+            <div className="pc-group pc-group--media">
+              <div className="pc-menu-wrap">
+                <button
+                  type="button"
+                  className={`pc-btn ${subtitleId !== -1 ? "is-active" : ""}`}
+                  onClick={() => {
+                    setSubsOpen(!subsOpen);
+                    setAudioOpen(false);
+                    setSpeedOpen(false);
+                    setQualityOpen(false);
+                    scheduleHide();
+                  }}
+                  aria-label="Subtitles"
+                  data-tip="Subtitles (C)"
+                  title="Subtitles (C)"
+                >
+                  <IconCC />
+                </button>
+                {subsOpen && (
+                  <div className="pc-menu">
+                    <button
+                      type="button"
+                      className={`pc-menu-item ${subtitleId === -1 ? "active" : ""}`}
+                      onClick={() => {
+                        onSwitchSubtitle?.(-1);
+                        setSubsOpen(false);
+                        scheduleHide();
+                      }}
+                    >
+                      Off
                     </button>
-                  ))}
-                  {audioTracks.length === 0 && (
-                    <button type="button" className="pc-menu-item active" disabled>
-                      Default
-                    </button>
+                    {subtitleTracks.length === 0 && (
+                      <div className="pc-menu-empty">No subtitles</div>
+                    )}
+                    {subtitleTracks.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`pc-menu-item ${subtitleId === t.id ? "active" : ""}`}
+                        onClick={() => {
+                          onSwitchSubtitle?.(t.id);
+                          setSubsOpen(false);
+                          scheduleHide();
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="pc-menu-wrap">
+                <button
+                  type="button"
+                  className="pc-btn"
+                  onClick={() => {
+                    setAudioOpen(!audioOpen);
+                    setSubsOpen(false);
+                    setSpeedOpen(false);
+                    setQualityOpen(false);
+                    scheduleHide();
+                  }}
+                  aria-label="Audio track"
+                  data-tip="Audio"
+                  title="Audio"
+                >
+                  <IconAudio />
+                </button>
+                {audioOpen && (
+                  <div className="pc-menu">
+                    {audioTracks.length === 0 && <div className="pc-menu-empty">No alt audio</div>}
+                    {audioTracks.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`pc-menu-item ${audioId === t.id ? "active" : ""}`}
+                        onClick={() => {
+                          onSwitchAudio?.(t.id);
+                          setAudioOpen(false);
+                          scheduleHide();
+                        }}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                    {audioTracks.length === 0 && (
+                      <button type="button" className="pc-menu-item active" disabled>
+                        Default
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {levels.length > 1 && (
+                <div className="pc-menu-wrap">
+                  <button
+                    type="button"
+                    className="pc-btn pc-btn--quality"
+                    onClick={() => {
+                      const v = !qualityOpen;
+                      setQualityOpen(v);
+                      setSubsOpen(false);
+                      setAudioOpen(false);
+                      setSpeedOpen(false);
+                      scheduleHide();
+                    }}
+                    aria-label="Quality"
+                    data-tip={`Quality ${currentLevel === -1 ? "Auto" : (levels.find((l) => l.idx === currentLevel)?.name ?? "")}`}
+                    title="Quality"
+                  >
+                    HD
+                  </button>
+                  {qualityOpen && (
+                    <div className="pc-menu">
+                      <button
+                        type="button"
+                        className={`pc-menu-item ${currentLevel === -1 ? "active" : ""}`}
+                        onClick={() => {
+                          onSelectLevel?.(-1);
+                          setQualityOpen(false);
+                          scheduleHide();
+                        }}
+                      >
+                        Auto
+                      </button>
+                      {levels.map((l) => (
+                        <button
+                          key={l.idx}
+                          type="button"
+                          className={`pc-menu-item ${currentLevel === l.idx ? "active" : ""}`}
+                          onClick={() => {
+                            onSelectLevel?.(l.idx);
+                            setQualityOpen(false);
+                            scheduleHide();
+                          }}
+                        >
+                          {l.name}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}
+              <div className="pc-menu-wrap">
+                <button
+                  type="button"
+                  className="pc-btn pc-btn--speed"
+                  onClick={() => {
+                    setSpeedOpen(!speedOpen);
+                    setSubsOpen(false);
+                    setAudioOpen(false);
+                    setQualityOpen(false);
+                    scheduleHide();
+                  }}
+                  aria-label="Playback speed"
+                  data-tip={`Speed ${speed}x (</>)`}
+                  title="Speed (</> )"
+                >
+                  <IconSpeed />
+                  <span className="pc-speed-val">{speed}x</span>
+                </button>
+                {speedOpen && (
+                  <div className="pc-menu">
+                    {SPEEDS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`pc-menu-item ${speed === s ? "active" : ""}`}
+                        onClick={() => {
+                          onSpeedChange?.(s);
+                          setSpeedOpen(false);
+                          scheduleHide();
+                        }}
+                      >
+                        {s}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="pc-menu-wrap">
-              <button type="button" className="pc-btn pc-btn--speed" onClick={() => { setSpeedOpen(!speedOpen); setSubsOpen(false); setAudioOpen(false); scheduleHide(); }} aria-label="Playback speed" data-tip={`Speed ${speed}x (</>)`} title="Speed (</> )">
-                <IconSpeed />
-                <span className="pc-speed-val">{speed}x</span>
+
+            <div className="pc-divider" aria-hidden />
+
+            <div className="pc-group pc-group--size">
+              <button
+                type="button"
+                className="pc-btn pc-btn--fit"
+                onClick={onCycleFitMode}
+                aria-label={`Fit mode: ${FIT_LABELS[fitMode] ?? fitMode}`}
+                data-tip={`Fit: ${FIT_LABELS[fitMode] ?? fitMode} (Z)`}
+                title={`Fit: ${FIT_LABELS[fitMode] ?? fitMode} (Z)`}
+              >
+                <IconFit />
               </button>
-              {speedOpen && (
-                <div className="pc-menu">
-                  {SPEEDS.map((s) => (
-                    <button key={s} type="button" className={`pc-menu-item ${speed === s ? "active" : ""}`} onClick={() => { onSpeedChange?.(s); setSpeedOpen(false); scheduleHide(); }}>
-                      {s}x
-                    </button>
-                  ))}
-                </div>
+              <span className="pc-fit-label">{FIT_LABELS[fitMode] ?? fitMode}</span>
+            </div>
+
+            <div className="pc-divider" aria-hidden />
+
+            <div className="pc-group">
+              <button
+                type="button"
+                className="pc-btn"
+                onClick={togglePiP}
+                disabled={!pipSupported}
+                aria-label={isPiP ? "Exit picture in picture" : "Picture in picture"}
+                aria-pressed={isPiP}
+                data-tip={isPiP ? "Exit PiP (p)" : "PiP (p)"}
+                title={!pipSupported ? "PiP not supported" : undefined}
+              >
+                <IconPip />
+              </button>
+              <button
+                type="button"
+                className="pc-btn pc-btn--fullscreen"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                data-tip={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"}
+                aria-pressed={isFullscreen}
+              >
+                <IconFullscreen isFullscreen={isFullscreen} />
+              </button>
+              {onRetry && (
+                <button
+                  type="button"
+                  className="pc-btn pc-btn--retry"
+                  onClick={onRetry}
+                  aria-label="Retry stream"
+                  data-tip="Retry"
+                  title="Retry"
+                >
+                  ↻
+                </button>
               )}
             </div>
           </div>
-
-          <div className="pc-divider" aria-hidden />
-
-          <div className="pc-group pc-group--size">
-            <button type="button" className="pc-btn pc-btn--fit" onClick={onCycleFitMode} aria-label={`Fit mode: ${FIT_LABELS[fitMode] ?? fitMode}`} data-tip={`Fit: ${FIT_LABELS[fitMode] ?? fitMode} (Z)`} title={`Fit: ${FIT_LABELS[fitMode] ?? fitMode} (Z)`}>
-              <IconFit />
-            </button>
-            <span className="pc-fit-label">{FIT_LABELS[fitMode] ?? fitMode}</span>
-          </div>
-
-          <div className="pc-divider" aria-hidden />
-
-          <div className="pc-group">
-            <button
-              type="button"
-              className="pc-btn"
-              onClick={togglePiP}
-              disabled={!pipSupported}
-              aria-label={isPiP ? "Exit picture in picture" : "Picture in picture"}
-              aria-pressed={isPiP}
-              data-tip={isPiP ? "Exit PiP (p)" : "PiP (p)"}
-              title={!pipSupported ? "PiP not supported" : undefined}
-            >
-              <IconPip />
-            </button>
-            <button type="button" className="pc-btn pc-btn--fullscreen" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"} data-tip={isFullscreen ? "Exit fullscreen (f)" : "Fullscreen (f)"} aria-pressed={isFullscreen}>
-              <IconFullscreen isFullscreen={isFullscreen} />
-            </button>
-            {onRetry && <button type="button" className="pc-btn pc-btn--retry" onClick={onRetry} aria-label="Retry stream" data-tip="Retry" title="Retry">↻</button>}
-          </div>
         </div>
       </div>
-    </div>
     </>
   );
 }

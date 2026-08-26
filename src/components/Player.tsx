@@ -33,7 +33,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const fitMode = (fitModeProp as any) ?? videoZoom.fitMode;
   const { speed, saveSpeed } = usePlaybackSpeed();
   const speedRef = useRef(speed);
-  useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<PlayerStatus>("idle");
@@ -44,32 +46,37 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const { getPosition, savePosition, clearPosition } = usePlaybackResume(profileId);
   const getPositionRef = useRef(getPosition);
   const hasPromptedRef = useRef<string | null>(null);
-  const [resumePrompt, setResumePrompt] = useState<{ position: number; duration: number } | null>(null);
+  const [resumePrompt, setResumePrompt] = useState<{ position: number; duration: number } | null>(
+    null
+  );
   const pendingResumeRef = useRef<{ position: number; duration: number } | null>(null);
 
   const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
     if (!v) return;
-    try { v.playbackRate = s; } catch {}
+    try {
+      v.playbackRate = s;
+    } catch {}
   }, []);
 
   useEffect(() => {
     applySpeed(videoRef.current, speed);
   }, [speed, applySpeed, channel]);
 
-  const isResumable = useCallback(
-    (pos: number, dur: number, kind?: string) => {
-      if (kind === "live") return false;
-      if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
-      if (pos < 10) return false;
-      if (dur - pos < 15) return false;
-      const pct = pos / dur;
-      return pct > 0.01 && pct < 0.985;
-    },
-    []
-  );
+  const isResumable = useCallback((pos: number, dur: number, kind?: string) => {
+    if (kind === "live") return false;
+    if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
+    if (pos < 10) return false;
+    if (dur - pos < 15) return false;
+    const pct = pos / dur;
+    return pct > 0.01 && pct < 0.985;
+  }, []);
   const isResumableRef = useRef(isResumable);
-  useEffect(() => { isResumableRef.current = isResumable; }, [isResumable]);
-  useEffect(() => { getPositionRef.current = getPosition; }, [getPosition]);
+  useEffect(() => {
+    isResumableRef.current = isResumable;
+  }, [isResumable]);
+  useEffect(() => {
+    getPositionRef.current = getPosition;
+  }, [getPosition]);
 
   const tryShowResumePrompt = useCallback(
     (kind?: string) => {
@@ -84,7 +91,8 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       }
       // delay showing until duration is known; if we already have duration, show now
       const v = videoRef.current;
-      const dur = v?.duration && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : saved.duration;
+      const dur =
+        v?.duration && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : saved.duration;
       pendingResumeRef.current = { position: saved.position, duration: dur };
       hasPromptedRef.current = channel.id;
       // pause immediately so user sees prompt instead of autoplaying from 0
@@ -127,20 +135,44 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     if (hls) {
       try {
         const aTracks: any[] = (hls as any).audioTracks ?? [];
-        setAudioTracks(aTracks.map((t, i) => ({ id: t.id ?? i, label: t.name || t.lang || `Audio ${i+1}`, lang: t.lang })));
+        setAudioTracks(
+          aTracks.map((t, i) => ({
+            id: t.id ?? i,
+            label: t.name || t.lang || `Audio ${i + 1}`,
+            lang: t.lang,
+          }))
+        );
         setAudioId(typeof (hls as any).audioTrack === "number" ? (hls as any).audioTrack : -1);
-      } catch { setAudioTracks([]); }
+      } catch {
+        setAudioTracks([]);
+      }
       try {
         const sTracks: any[] = (hls as any).subtitleTracks ?? [];
-        setSubtitleTracks(sTracks.map((t, i) => ({ id: t.id ?? i, label: t.name || t.lang || `Sub ${i+1}`, lang: t.lang })));
-        setSubtitleId(typeof (hls as any).subtitleTrack === "number" ? (hls as any).subtitleTrack : -1);
-      } catch { setSubtitleTracks([]); }
+        setSubtitleTracks(
+          sTracks.map((t, i) => ({
+            id: t.id ?? i,
+            label: t.name || t.lang || `Sub ${i + 1}`,
+            lang: t.lang,
+          }))
+        );
+        setSubtitleId(
+          typeof (hls as any).subtitleTrack === "number" ? (hls as any).subtitleTrack : -1
+        );
+      } catch {
+        setSubtitleTracks([]);
+      }
     } else if (v) {
       // native text tracks fallback
       try {
         const tt = Array.from(v.textTracks) as any[];
         if (tt.length) {
-          setSubtitleTracks(tt.map((t, i) => ({ id: i, label: t.label || t.language || `Sub ${i+1}`, lang: t.language })));
+          setSubtitleTracks(
+            tt.map((t, i) => ({
+              id: i,
+              label: t.label || t.language || `Sub ${i + 1}`,
+              lang: t.language,
+            }))
+          );
           const showing = tt.findIndex((t) => t.mode === "showing");
           setSubtitleId(showing);
         }
@@ -149,7 +181,13 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         const at: any = (v as any).audioTracks;
         if (at && at.length) {
           const arr = Array.from(at as any[]) as any[];
-          setAudioTracks(arr.map((t: any, i: number) => ({ id: i, label: t.label || t.language || `Audio ${i+1}`, lang: t.language })));
+          setAudioTracks(
+            arr.map((t: any, i: number) => ({
+              id: i,
+              label: t.label || t.language || `Audio ${i + 1}`,
+              lang: t.language,
+            }))
+          );
         }
       } catch {}
     }
@@ -158,7 +196,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const switchAudio = useCallback((id: number) => {
     const hls = hlsRef.current;
     if (hls && typeof (hls as any).audioTrack !== "undefined") {
-      try { (hls as any).audioTrack = id; setAudioId(id); } catch {}
+      try {
+        (hls as any).audioTrack = id;
+        setAudioId(id);
+      } catch {}
     } else {
       const v: any = videoRef.current;
       const at = v?.audioTracks;
@@ -183,7 +224,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const switchSubtitle = useCallback((id: number) => {
     const hls = hlsRef.current;
     if (hls && typeof (hls as any).subtitleTrack !== "undefined") {
-      try { (hls as any).subtitleTrack = id; setSubtitleId(id); } catch {}
+      try {
+        (hls as any).subtitleTrack = id;
+        setSubtitleId(id);
+      } catch {}
       // also toggle native textTracks visibility via hls
       const v = videoRef.current;
       if (v) {
@@ -221,7 +265,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         if (saved && isResumable(saved.position, saved.duration, channelRef.current?.kind)) {
           const v = videoRef.current;
           pendingResumeRef.current = { position: saved.position, duration: saved.duration };
-          try { v?.pause(); } catch {}
+          try {
+            v?.pause();
+          } catch {}
           setResumePrompt({ position: saved.position, duration: saved.duration });
         } else {
           video.play().catch(() => {});
@@ -309,7 +355,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     }
     const isLikelyHls = channel.url.includes(".m3u8") || channel.url.includes("m3u8");
     const onWaiting = () => setStatus((s) => (s === "error" ? s : "buffering"));
-    const onPlaying = () => { setStatus("idle"); refreshTracks(); applySpeed(video, speedRef.current); };
+    const onPlaying = () => {
+      setStatus("idle");
+      refreshTracks();
+      applySpeed(video, speedRef.current);
+    };
     const onCanPlay = () => setStatus((s) => (s === "loading" || s === "buffering" ? "idle" : s));
     const onLoadedMeta = () => {
       refreshTracks();
@@ -327,7 +377,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       video.onloadeddata = null;
       video.onerror = null;
       video.src = channel.url;
-      const onLoaded = () => { setStatus("idle"); refreshTracks(); applySpeed(video, speedRef.current); };
+      const onLoaded = () => {
+        setStatus("idle");
+        refreshTracks();
+        applySpeed(video, speedRef.current);
+      };
       const onErr = () => {
         if (retryCountRef.current < 3) {
           retryCountRef.current += 1;
@@ -474,7 +528,12 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       {status === "error" && error && (
         <div className="player-overlay player-error">
           <span aria-hidden>!</span> {error}
-          <button type="button" className="player-retry" onClick={retry} aria-label="Retry playback">
+          <button
+            type="button"
+            className="player-retry"
+            onClick={retry}
+            aria-label="Retry playback"
+          >
             Retry
           </button>
         </div>

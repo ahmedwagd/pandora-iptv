@@ -56,7 +56,10 @@ const Backdrop = memo(function Backdrop({ backdrop }: { backdrop?: string }) {
   return (
     <div className="cinematic-backdrop-wrap" aria-hidden>
       {backdrop ? (
-        <div className="cinematic-backdrop" style={{ backgroundImage: `url(${JSON.stringify(backdrop)})` }} />
+        <div
+          className="cinematic-backdrop"
+          style={{ backgroundImage: `url(${JSON.stringify(backdrop)})` }}
+        />
       ) : (
         <div className="cinematic-backdrop cinematic-backdrop--fallback" />
       )}
@@ -99,7 +102,17 @@ const Bento = memo(function Bento({
             <span aria-hidden style={{ color: "var(--primary-container)" }}>
               ★
             </span>{" "}
-            {rating ?? "—"} <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--on-surface-variant)", marginLeft: 6 }}>BT.709</span>
+            {rating ?? "—"}{" "}
+            <span
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                color: "var(--on-surface-variant)",
+                marginLeft: 6,
+              }}
+            >
+              BT.709
+            </span>
           </span>
         </div>
       </div>
@@ -173,7 +186,8 @@ function fmtResume(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   const h = Math.floor(m / 60);
-  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (h > 0)
+    return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
@@ -186,13 +200,15 @@ function isResumable(pos: number, dur: number): boolean {
 }
 
 export function DetailPage(props: DetailProps) {
-  const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh, profileId } = props as CommonProps & { profileId?: string | null };
+  const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh, profileId } =
+    props as CommonProps & { profileId?: string | null };
   const { getPosition } = usePlaybackResume(profileId ?? null);
   const { history } = useWatchHistory(profileId ?? null);
 
   const title = props.kind === "movie" ? props.channel.name : props.series.name;
   const poster = props.kind === "movie" ? props.channel.logo : props.series.cover;
-  const coverImage = props.kind === "movie" ? props.detail?.backdrop ?? props.detail?.poster ?? poster : undefined;
+  const coverImage =
+    props.kind === "movie" ? (props.detail?.backdrop ?? props.detail?.poster ?? poster) : undefined;
   const backdrop = coverImage;
 
   const year = props.kind === "movie" ? props.detail?.year : props.series.year;
@@ -224,16 +240,27 @@ export function DetailPage(props: DetailProps) {
       // if history has no seriesId (old data), try to infer by searching seasons for h.id
       let belongs = !!h.seriesId;
       if (!belongs) {
-        for (const s of props.seasons) if (s.episodes.some((e) => e.id === h.id)) { belongs = true; break; }
+        for (const s of props.seasons)
+          if (s.episodes.some((e) => e.id === h.id)) {
+            belongs = true;
+            break;
+          }
         if (!belongs) continue;
       }
       const pos = getPosition(h.id);
       if (pos && isResumable(pos.position, pos.duration)) {
         // find actual episode Channel to play (has correct url, not redacted)
         let ep: Channel | null = null;
-        for (const s of props.seasons) { const f = s.episodes.find((e) => e.id === h.id); if (f) { ep = f; break; } }
+        for (const s of props.seasons) {
+          const f = s.episodes.find((e) => e.id === h.id);
+          if (f) {
+            ep = f;
+            break;
+          }
+        }
         // fallback to history-derived channel if not in seasons (not yet loaded)
-        if (!ep) ep = { id: h.id, name: h.name, url: h.url, logo: h.poster, group: "", kind: "episode" };
+        if (!ep)
+          ep = { id: h.id, name: h.name, url: h.url, logo: h.poster, group: "", kind: "episode" };
         return { ep, pos, name: h.name };
       }
     }
@@ -242,7 +269,9 @@ export function DetailPage(props: DetailProps) {
 
   const movieResume = props.kind === "movie" ? getPosition(props.channel.id) : undefined;
   const movieResumable = movieResume && isResumable(movieResume.position, movieResume.duration);
-  const movieResumeLabel = movieResumable ? `Resume from ${fmtResume(movieResume!.position)}` : null;
+  const movieResumeLabel = movieResumable
+    ? `Resume from ${fmtResume(movieResume!.position)}`
+    : null;
 
   const ghostNum = useMemo(() => {
     const seed = title.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -332,14 +361,19 @@ export function DetailPage(props: DetailProps) {
               {plot ? (
                 <p className="cinematic-plot">{plot}</p>
               ) : (
-                !isLoading && <p className="cinematic-plot cinematic-plot--muted">No synopsis available for this title.</p>
+                !isLoading && (
+                  <p className="cinematic-plot cinematic-plot--muted">
+                    No synopsis available for this title.
+                  </p>
+                )
               )}
 
               <div className="cinematic-actions">
                 {props.kind === "movie" ? (
                   <>
                     <button type="button" className="cinematic-watch" onClick={handleWatch}>
-                      <span className="cinematic-watch-icon">{movieResumable ? "↺" : "▶"}</span> {movieResumable ? movieResumeLabel : "Watch"}
+                      <span className="cinematic-watch-icon">{movieResumable ? "↺" : "▶"}</span>{" "}
+                      {movieResumable ? movieResumeLabel : "Watch"}
                     </button>
                     <button
                       type="button"
@@ -353,8 +387,13 @@ export function DetailPage(props: DetailProps) {
                   </>
                 ) : seriesResume ? (
                   <>
-                    <button type="button" className="cinematic-watch" onClick={() => seriesResume.ep && onWatch(seriesResume.ep)}>
-                      <span className="cinematic-watch-icon">↺</span> Resume {seriesResume.name} from {fmtResume(seriesResume.pos.position)}
+                    <button
+                      type="button"
+                      className="cinematic-watch"
+                      onClick={() => seriesResume.ep && onWatch(seriesResume.ep)}
+                    >
+                      <span className="cinematic-watch-icon">↺</span> Resume {seriesResume.name}{" "}
+                      from {fmtResume(seriesResume.pos.position)}
                     </button>
                     <button
                       type="button"
@@ -368,7 +407,8 @@ export function DetailPage(props: DetailProps) {
                   </>
                 ) : (
                   <button type="button" className="cinematic-watch" onClick={handleFavorite}>
-                    <span className="cinematic-watch-icon">★</span> {isFavorite ? "Favorited" : "Add to favorites"}
+                    <span className="cinematic-watch-icon">★</span>{" "}
+                    {isFavorite ? "Favorited" : "Add to favorites"}
                   </button>
                 )}
               </div>

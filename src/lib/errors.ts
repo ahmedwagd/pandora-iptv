@@ -1,8 +1,4 @@
-export type PlaylistErrorCode =
-  | "NETWORK"
-  | "AUTH"
-  | "EMPTY"
-  | "UNKNOWN";
+export type PlaylistErrorCode = "NETWORK" | "AUTH" | "EMPTY" | "UNKNOWN";
 
 /** Structured error for playlist/Xtream operations */
 export class PlaylistError extends Error {

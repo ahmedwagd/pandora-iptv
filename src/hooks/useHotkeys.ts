@@ -36,7 +36,8 @@ export function useHotkeys(map: HotkeyMap, opts: UseHotkeysOptions = {}) {
       }
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       // also try original case for special keys like \" \" (Space)
-      const fn = mapRef.current[key] ?? mapRef.current[e.key] ?? mapRef.current[e.key.toLowerCase()];
+      const fn =
+        mapRef.current[key] ?? mapRef.current[e.key] ?? mapRef.current[e.key.toLowerCase()];
       if (fn) {
         // avoid interfering with typing in inputs for single-char keys already filtered
         e.preventDefault();

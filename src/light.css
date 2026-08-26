@@ -1,0 +1,206 @@
+/* ============================================================
+   Deep Sage — dark-moody theme (the "light" option, made dark).
+   Login · Home · Live sidebar · Browse
+   Forest signal on green-black, hairline edges, no neon glow.
+   Signature: SMPTE color-bar mark + ledger grain (index.css).
+   ============================================================ */
+
+/* — Theme toggle (sits in both themes) — */
+.theme-toggle {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease,
+    transform 0.1s ease;
+}
+.theme-toggle:hover {
+  color: var(--on-surface);
+  border-color: var(--outline);
+  background: var(--surface-high);
+}
+.theme-toggle:active {
+  transform: scale(0.96);
+}
+.login-theme {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 5;
+}
+
+/* ============================ LOGIN ============================ */
+[data-theme="light"] .login-error {
+  background: #321c1b;
+  border-color: rgba(255, 180, 171, 0.22);
+  color: #ffb4ab;
+}
+[data-theme="light"] .login-form input::placeholder {
+  color: #6f7f76;
+}
+[data-theme="light"] .login-connect:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(48, 178, 134, 0.28);
+}
+[data-theme="light"] .login-secondary {
+  color: var(--on-surface);
+}
+[data-theme="light"] .login-aside {
+  background: linear-gradient(180deg, #1b2620 0%, #101814 100%);
+}
+[data-theme="light"] .login-main {
+  background: var(--background);
+}
+
+/* ============================ HOME ============================= */
+[data-theme="light"] .home-tile {
+  border-color: var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+[data-theme="light"] .home-tile::after {
+  color: rgba(220, 231, 223, 0.05);
+}
+[data-theme="light"] .home-tile:hover {
+  border-color: var(--tile-accent, var(--signal));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+[data-theme="light"] .home-tile:focus-visible {
+  border-color: var(--tile-accent, var(--signal));
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+[data-theme="light"] .home-tile-icon {
+  color: var(--on-surface-variant);
+}
+[data-theme="light"] .home-tile:hover .home-tile-icon {
+  color: var(--tile-accent, var(--signal));
+}
+[data-theme="light"] .home-footer {
+  background: rgba(10, 16, 13, 0.6);
+  border-top: 1px solid var(--border);
+}
+[data-theme="light"] .home-footer-profile span[aria-hidden] {
+  text-shadow: none;
+}
+[data-theme="light"] .home-footer-exp--warn {
+  color: #ffb4ab;
+}
+[data-theme="light"] .home-footer-trial {
+  color: #ffc158;
+}
+[data-theme="light"] .home-settings,
+[data-theme="light"] .home-logout {
+  background: var(--surface-container);
+  border-color: var(--border);
+}
+[data-theme="light"] .home-settings:hover,
+[data-theme="light"] .home-logout:hover {
+  background: var(--surface-high);
+  border-color: rgba(48, 178, 134, 0.3);
+}
+
+/* ======================= LIVE SIDEBAR ========================= */
+[data-theme="light"] .filters {
+  background: rgba(10, 16, 13, 0.55);
+}
+[data-theme="light"] .filters input::placeholder {
+  color: #6f7f76;
+}
+[data-theme="light"] .sidebar-header {
+  background: rgba(10, 16, 13, 0.5);
+}
+[data-theme="light"] .smart-filter:hover {
+  background: var(--surface-high);
+}
+[data-theme="light"] .channel-row {
+  background: transparent;
+}
+[data-theme="light"] .channel-row:hover {
+  background: var(--surface-high);
+  border-color: var(--border);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  transform: none;
+}
+[data-theme="light"] .channel-row.active {
+  background: var(--surface-tint);
+  border-color: rgba(48, 178, 134, 0.35);
+  box-shadow: inset 2px 0 0 var(--signal);
+}
+
+/* ========================= BROWSE ============================= */
+[data-theme="light"] .smart-filter:hover {
+  background: var(--surface-high);
+}
+[data-theme="light"] .filter-search input::placeholder {
+  color: #6f7f76;
+}
+[data-theme="light"] .browse-clear:hover {
+  color: #ffb4ab;
+  border-color: rgba(255, 180, 171, 0.25);
+  background: rgba(255, 180, 171, 0.08);
+}
+[data-theme="light"] .poster-card {
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+[data-theme="light"] .poster-card-img {
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.45),
+    0 1px 4px rgba(0, 0, 0, 0.3);
+}
+[data-theme="light"] .poster-card:hover .poster-card-img {
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.5),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+}
+[data-theme="light"] .poster-card-title {
+  color: var(--on-surface);
+}
+[data-theme="light"] .poster-card-placeholder {
+  background: linear-gradient(180deg, var(--surface-high) 0%, var(--surface-low) 100%);
+}
+
+/* — Command palette (surfaces inside Browse) — */
+[data-theme="light"] .cmd-palette-backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+[data-theme="light"] .cmd-palette {
+  background: var(--surface-container);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+[data-theme="light"] .cmd-palette input {
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  color: var(--on-surface);
+}
+[data-theme="light"] .cmd-item {
+  color: var(--on-surface-variant);
+}
+[data-theme="light"] .cmd-item.active,
+[data-theme="light"] .cmd-item:hover {
+  background: var(--surface-tint);
+  border-color: rgba(48, 178, 134, 0.35);
+  color: var(--on-surface);
+}
+[data-theme="light"] .change-source {
+  background: var(--surface-container);
+  border-color: var(--border);
+  color: var(--on-surface-variant);
+}
+[data-theme="light"] .change-source:hover {
+  background: var(--surface-high);
+  border-color: rgba(48, 178, 134, 0.3);
+  color: var(--on-surface);
+}

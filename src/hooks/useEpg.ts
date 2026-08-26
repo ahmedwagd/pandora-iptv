@@ -57,59 +57,53 @@ export function useEpg(creds: XtreamCreds | null, enabled: boolean): UseEpgRetur
     [enabled, epgMap.size]
   );
 
-  const fetchShort = useCallback(
-    async (channelId: string): Promise<EpgProgramme[]> => {
-      if (!credsRef.current) return [];
-      const cached = shortCacheRef.current.get(channelId);
-      if (cached) return cached;
+  const fetchShort = useCallback(async (channelId: string): Promise<EpgProgramme[]> => {
+    if (!credsRef.current) return [];
+    const cached = shortCacheRef.current.get(channelId);
+    if (cached) return cached;
 
-      shortAbortRef.current?.abort();
-      const ctrl = new AbortController();
-      shortAbortRef.current = ctrl;
-      setShortLoading(true);
-      try {
-        const progs = await getXtreamShortEpg(credsRef.current, tauriFetch as never, channelId, {
-          signal: ctrl.signal,
-        });
-        if (ctrl.signal.aborted) return [];
-        shortCacheRef.current.set(channelId, progs);
-        // also patch epgMap with now/next derived from short list
-        if (progs.length > 0) {
-          setEpgMap((prev) => {
-            const next = new Map(prev);
-            const now = Date.now();
-            let nowProg: EpgProgramme | undefined;
-            let nextProg: EpgProgramme | undefined;
-            for (let i = 0; i < progs.length; i++) {
-              const p = progs[i];
-              if (p.startTime <= now && now < p.stopTime) {
-                nowProg = p;
-                nextProg = progs[i + 1];
-                break;
-              }
-              if (p.startTime > now && !nowProg) {
-                nextProg = p;
-                break;
-              }
+    shortAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    shortAbortRef.current = ctrl;
+    setShortLoading(true);
+    try {
+      const progs = await getXtreamShortEpg(credsRef.current, tauriFetch as never, channelId, {
+        signal: ctrl.signal,
+      });
+      if (ctrl.signal.aborted) return [];
+      shortCacheRef.current.set(channelId, progs);
+      // also patch epgMap with now/next derived from short list
+      if (progs.length > 0) {
+        setEpgMap((prev) => {
+          const next = new Map(prev);
+          const now = Date.now();
+          let nowProg: EpgProgramme | undefined;
+          let nextProg: EpgProgramme | undefined;
+          for (let i = 0; i < progs.length; i++) {
+            const p = progs[i];
+            if (p.startTime <= now && now < p.stopTime) {
+              nowProg = p;
+              nextProg = progs[i + 1];
+              break;
             }
-            next.set(channelId, { now: nowProg, next: nextProg });
-            return next;
-          });
-        }
-        return progs;
-      } catch {
-        return [];
-      } finally {
-        if (!ctrl.signal.aborted) setShortLoading(false);
+            if (p.startTime > now && !nowProg) {
+              nextProg = p;
+              break;
+            }
+          }
+          next.set(channelId, { now: nowProg, next: nextProg });
+          return next;
+        });
       }
-    },
-    []
-  );
+      return progs;
+    } catch {
+      return [];
+    } finally {
+      if (!ctrl.signal.aborted) setShortLoading(false);
+    }
+  }, []);
 
-  const getForChannel = useCallback(
-    (channelId: string) => epgMap.get(channelId),
-    [epgMap]
-  );
+  const getForChannel = useCallback((channelId: string) => epgMap.get(channelId), [epgMap]);
 
   useEffect(() => {
     if (enabled && creds) {

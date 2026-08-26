@@ -3,6 +3,7 @@ import type { XtreamCreds } from "../types";
 import type { Profile } from "../types/profile";
 import { ColorBar } from "./ColorBar";
 import { ProfileSwitcher } from "./ProfileSwitcher";
+import { ThemeToggle } from "../theme";
 
 interface LoginPageProps {
   xtreamCreds: XtreamCreds | null;
@@ -63,8 +64,9 @@ export function LoginPage({
     if (canConnect) onLoadXtream({ server, username, password }, remember);
   };
 
-    return (
+  return (
     <div className="login">
+      <ThemeToggle className="login-theme" />
       <aside className="login-aside">
         <ColorBar className="colorbar--brand" />
         <p className="login-eyebrow">Broadcast · Signal · Player</p>
@@ -74,8 +76,8 @@ export function LoginPage({
           IPTV
         </h1>
         <p className="login-tagline">
-          Television from your provider. <strong>Live, movies, series</strong> — one
-          signal, every screen. Connect via Xtream Codes or drop in an M3U.
+          Television from your provider. <strong>Live, movies, series</strong> — one signal, every
+          screen. Connect via Xtream Codes or drop in an M3U.
         </p>
       </aside>
 

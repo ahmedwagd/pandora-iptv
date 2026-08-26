@@ -14,7 +14,14 @@ export function useBlockBrowserHotkeys(enabled = true) {
       const lower = key.length === 1 ? key.toLowerCase() : key;
 
       // F-keys: F1 help, F3 find, F5 reload, F7 caret, F12 devtools
-      if (key === "F1" || key === "F3" || key === "F5" || key === "F7" || key === "F12" || key === "F11") {
+      if (
+        key === "F1" ||
+        key === "F3" ||
+        key === "F5" ||
+        key === "F7" ||
+        key === "F12" ||
+        key === "F11"
+      ) {
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -38,8 +45,30 @@ export function useBlockBrowserHotkeys(enabled = true) {
         // U (view source), D (bookmark), L (address), E (search), K (search), Q (quit)
         // B (bookmarks), +/-/0 (zoom)
         const blockedCtrl = new Set([
-          "r", "t", "w", "n", "p", "s", "o", "f", "g", "h", "j", "u", "d", "l", "e", "k", "b", "q", "i",
-          "+", "-", "=", "_", "0",
+          "r",
+          "t",
+          "w",
+          "n",
+          "p",
+          "s",
+          "o",
+          "f",
+          "g",
+          "h",
+          "j",
+          "u",
+          "d",
+          "l",
+          "e",
+          "k",
+          "b",
+          "q",
+          "i",
+          "+",
+          "-",
+          "=",
+          "_",
+          "0",
         ]);
         if (blockedCtrl.has(lower) || blockedCtrl.has(key)) {
           e.preventDefault();
@@ -47,7 +76,12 @@ export function useBlockBrowserHotkeys(enabled = true) {
           return;
         }
         // Numpad zoom keys
-        if (key === "Add" || key === "Subtract" || key === "NumpadAdd" || key === "NumpadSubtract") {
+        if (
+          key === "Add" ||
+          key === "Subtract" ||
+          key === "NumpadAdd" ||
+          key === "NumpadSubtract"
+        ) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -62,6 +96,9 @@ export function useBlockBrowserHotkeys(enabled = true) {
     };
 
     window.addEventListener("keydown", handler, { capture: true });
-    return () => window.removeEventListener("keydown", handler, { capture: true } as unknown as EventListenerOptions);
+    return () =>
+      window.removeEventListener("keydown", handler, {
+        capture: true,
+      } as unknown as EventListenerOptions);
   }, [enabled]);
 }

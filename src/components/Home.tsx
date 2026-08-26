@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useLang } from "../hooks/useLang";
+import { strings } from "../i18n";
 import type { ContentMode } from "../types";
 import { ColorBar } from "./ColorBar";
+import { ThemeToggle } from "../theme";
 
 function useNow(intervalMs = 1000): Date {
   const [now, setNow] = useState(() => new Date());
@@ -35,8 +38,8 @@ function countText(count: number, loading: boolean): string {
 
 const TILES: {
   mode: ContentMode;
-  label: string;
-  unit: string;
+  labelKey: keyof typeof strings.en;
+  unitKey: keyof typeof strings.en;
   count: (p: HomeProps) => number;
   loading: (p: HomeProps) => boolean;
   bg: string;
@@ -45,12 +48,12 @@ const TILES: {
 }[] = [
   {
     mode: "live",
-    label: "Live TV",
-    unit: "channels",
+    labelKey: "liveTv" as const,
+    unitKey: "channels" as const,
     count: (p) => p.liveCount,
     loading: () => false,
-    bg: "linear-gradient(165deg, #123b2c 0%, #0d1511 72%)",
-    accent: "#2ee6a8",
+    bg: "var(--tile-live-bg)",
+    accent: "var(--tile-live-accent)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="2" y="6" width="20" height="13" rx="2" />
@@ -60,12 +63,12 @@ const TILES: {
   },
   {
     mode: "movie",
-    label: "Movies",
-    unit: "titles",
+    labelKey: "movies" as const,
+    unitKey: "titles" as const,
     count: (p) => p.movieCount,
     loading: (p) => p.moviesLoading,
-    bg: "linear-gradient(165deg, #0f2e2a 0%, #0d1511 72%)",
-    accent: "#98d3b5",
+    bg: "var(--tile-movie-bg)",
+    accent: "var(--tile-movie-accent)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -75,12 +78,12 @@ const TILES: {
   },
   {
     mode: "series",
-    label: "Series",
-    unit: "shows",
+    labelKey: "series" as const,
+    unitKey: "shows" as const,
     count: (p) => p.seriesCount,
     loading: (p) => p.seriesLoading,
-    bg: "linear-gradient(165deg, #332815 0%, #0d1511 72%)",
-    accent: "#ffc158",
+    bg: "var(--tile-series-bg)",
+    accent: "var(--tile-series-accent)",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <polygon points="12 3 22 9 12 15 2 9 12 3" />
@@ -91,11 +94,31 @@ const TILES: {
 ];
 
 export function Home(props: HomeProps) {
-  const { sourceLabel, onSelect, onDisconnect, onSettings, profileName, username, expDateFormatted, isTrial } = props;
+  const { lang } = useLang();
+  const s = strings[lang];
+  const {
+    sourceLabel,
+    onSelect,
+    onDisconnect,
+    onSettings,
+    profileName,
+    username,
+    expDateFormatted,
+    isTrial,
+  } = props;
   const total = props.liveCount + props.movieCount + props.seriesCount;
   const now = useNow();
-  const dateStr = now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "short", day: "numeric" });
-  const timeStr = now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const dateStr = now.toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  const timeStr = now.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 
   // expiration urgency: red if <7 days or expired
   let expUrgency: "ok" | "warn" | "none" = "none";
@@ -115,7 +138,7 @@ export function Home(props: HomeProps) {
               <span className="signal-dot" aria-hidden>
                 ●
               </span>{" "}
-              {total.toLocaleString()} titles · {props.liveCount} on air
+              {total.toLocaleString()} {s.titles} · {props.liveCount} {s.live.toLowerCase()}
             </span>
           </div>
           {sourceLabel && <p className="home-subtitle">{sourceLabel}</p>}
@@ -128,11 +151,12 @@ export function Home(props: HomeProps) {
           </div>
         </div>
         <div className="home-header-actions">
-          <button className="home-settings" onClick={onSettings} aria-label="Settings">
-            ⚙ Settings
+          <ThemeToggle />
+          <button className="home-settings" onClick={onSettings} aria-label={s.settings}>
+            ⚙ {s.settings}
           </button>
           <button className="home-logout" onClick={onDisconnect}>
-            Exit
+            {s.exit}
           </button>
         </div>
       </header>
@@ -146,12 +170,12 @@ export function Home(props: HomeProps) {
             data-ch={`CH 0${idx + 1}`}
             data-num={`0${idx + 1}`}
             onClick={() => onSelect(t.mode)}
-            aria-label={`${t.label} — ${countText(t.count(props), t.loading(props))} ${t.unit}`}
+            aria-label={`${s[t.labelKey]} — ${countText(t.count(props), t.loading(props))} ${s[t.unitKey]}`}
           >
             <div className="home-tile-icon">{t.icon}</div>
-            <div className="home-tile-label">{t.label}</div>
+            <div className="home-tile-label">{s[t.labelKey]}</div>
             <div className="home-tile-count">
-              {countText(t.count(props), t.loading(props))} {t.unit}
+              {countText(t.count(props), t.loading(props))} {s[t.unitKey]}
             </div>
             <ColorBar className="home-tile-bar" />
           </button>
@@ -171,12 +195,15 @@ export function Home(props: HomeProps) {
           </div>
           <div className="home-footer-right">
             {expDateFormatted ? (
-              <span className={`home-footer-exp ${expUrgency === "warn" ? "home-footer-exp--warn" : ""}`} title={isTrial ? "Trial account" : undefined}>
+              <span
+                className={`home-footer-exp ${expUrgency === "warn" ? "home-footer-exp--warn" : ""}`}
+                title={isTrial ? "Trial account" : undefined}
+              >
                 {isTrial && <span className="home-footer-trial">Trial · </span>}
-                Expires {expDateFormatted}
+                {s.expires} {expDateFormatted}
               </span>
             ) : (
-              <span className="home-footer-exp home-footer-exp--none">No expiration</span>
+              <span className="home-footer-exp home-footer-exp--none">{s.noExpiration}</span>
             )}
           </div>
         </footer>

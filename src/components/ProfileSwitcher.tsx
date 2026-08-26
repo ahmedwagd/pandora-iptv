@@ -9,7 +9,13 @@ interface ProfileSwitcherProps {
   onDelete: (id: string) => void;
 }
 
-export function ProfileSwitcher({ profiles, activeId, onSwitch, onCreate, onDelete }: ProfileSwitcherProps) {
+export function ProfileSwitcher({
+  profiles,
+  activeId,
+  onSwitch,
+  onCreate,
+  onDelete,
+}: ProfileSwitcherProps) {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
 
@@ -40,7 +46,8 @@ export function ProfileSwitcher({ profiles, activeId, onSwitch, onCreate, onDele
                 type="button"
                 className="profile-pill-delete"
                 onClick={() => {
-                  if (confirm(`Delete profile "${p.name}"? This clears its favorites and history.`)) onDelete(p.id);
+                  if (confirm(`Delete profile "${p.name}"? This clears its favorites and history.`))
+                    onDelete(p.id);
                 }}
                 aria-label={`Delete ${p.name}`}
                 title="Delete profile"
@@ -66,10 +73,19 @@ export function ProfileSwitcher({ profiles, activeId, onSwitch, onCreate, onDele
             }}
             aria-label="New profile name"
           />
-          <button type="button" className="profile-create-btn" onClick={handleCreate} disabled={!newName.trim()}>
+          <button
+            type="button"
+            className="profile-create-btn"
+            onClick={handleCreate}
+            disabled={!newName.trim()}
+          >
             Add
           </button>
-          <button type="button" className="profile-create-cancel" onClick={() => setCreating(false)}>
+          <button
+            type="button"
+            className="profile-create-cancel"
+            onClick={() => setCreating(false)}
+          >
             Cancel
           </button>
         </div>

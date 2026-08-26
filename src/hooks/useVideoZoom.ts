@@ -66,5 +66,16 @@ export function useVideoZoom() {
   const zoomOut = useCallback(() => saveZoom(zoom - 10), [saveZoom, zoom]);
   const resetZoom = useCallback(() => saveZoom(DEFAULT_ZOOM), [saveZoom]);
 
-  return { fitMode, saveFitMode, cycleFitMode, zoom, saveZoom, zoomIn, zoomOut, resetZoom, MIN_ZOOM, MAX_ZOOM };
+  return {
+    fitMode,
+    saveFitMode,
+    cycleFitMode,
+    zoom,
+    saveZoom,
+    zoomIn,
+    zoomOut,
+    resetZoom,
+    MIN_ZOOM,
+    MAX_ZOOM,
+  };
 }

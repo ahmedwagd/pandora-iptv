@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { MediaImage } from "./MediaImage";
 import { EmptyState } from "./shared/EmptyState";
 
@@ -33,10 +33,17 @@ const PosterCardMemo = memo(function PosterCardMemo({
   favoriteIds?: Set<string>;
   onToggleFavorite?: (id: string) => void;
 }) {
-  const isFav = favoriteIds ? favoriteIds.has(item.id) || favoriteIds.has(`series:${item.id}`) : false;
+  const isFav = favoriteIds
+    ? favoriteIds.has(item.id) || favoriteIds.has(`series:${item.id}`)
+    : false;
   return (
     <div className="poster-card-wrap">
-      <button type="button" className="poster-card" onClick={() => onOpen(item.id)} aria-label={item.name}>
+      <button
+        type="button"
+        className="poster-card"
+        onClick={() => onOpen(item.id)}
+        aria-label={item.name}
+      >
         <MediaImage
           src={item.poster}
           alt={item.name}
@@ -50,8 +57,13 @@ const PosterCardMemo = memo(function PosterCardMemo({
         <button
           type="button"
           className={`poster-fav ${isFav ? "is-fav" : ""}`}
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(item.id); }}
-          aria-label={isFav ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite(item.id);
+          }}
+          aria-label={
+            isFav ? `Remove ${item.name} from favorites` : `Add ${item.name} to favorites`
+          }
           aria-pressed={isFav}
           title={isFav ? "Remove from favorites" : "Add to favorites"}
         >
@@ -59,7 +71,17 @@ const PosterCardMemo = memo(function PosterCardMemo({
         </button>
       )}
       {showRemove && onRemove && (
-        <button type="button" className="poster-remove" onClick={(e) => { e.stopPropagation(); onRemove(item.id); }} aria-label={`Remove ${item.name} from watched`} title="Remove from watched" data-tip="Remove">
+        <button
+          type="button"
+          className="poster-remove"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove(item.id);
+          }}
+          aria-label={`Remove ${item.name} from watched`}
+          title="Remove from watched"
+          data-tip="Remove"
+        >
           ✕
         </button>
       )}
@@ -67,7 +89,36 @@ const PosterCardMemo = memo(function PosterCardMemo({
   );
 });
 
-export function PosterGrid({ items, onOpen, emptyText, onRemove, showRemove, favoriteIds, onToggleFavorite }: PosterGridProps) {
+function PosterSkeleton() {
+  return (
+    <div className="poster-card skeleton">
+      <div className="skeleton-img" />
+      <div className="skeleton-line" />
+    </div>
+  );
+}
+export function PosterGridSkeleton({ count = 12 }: { count?: number }) {
+  return (
+    <div className="poster-grid">
+      {Array.from({ length: count }).map((_, i) => (
+        <PosterSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
+const PAGE_SIZE = 60;
+export function PosterGrid({
+  items,
+  onOpen,
+  emptyText,
+  onRemove,
+  showRemove,
+  favoriteIds,
+  onToggleFavorite,
+}: PosterGridProps) {
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  useEffect(() => setVisible(PAGE_SIZE), [items]);
   if (items.length === 0) {
     return (
       <div className="poster-grid-empty">
@@ -76,11 +127,33 @@ export function PosterGrid({ items, onOpen, emptyText, onRemove, showRemove, fav
     );
   }
 
+  const shown = items.slice(0, visible);
   return (
-    <div className="poster-grid">
-      {items.map((item) => (
-        <PosterCardMemo key={item.id} item={item} onOpen={onOpen} onRemove={onRemove} showRemove={showRemove} favoriteIds={favoriteIds} onToggleFavorite={onToggleFavorite} />
-      ))}
-    </div>
+    <>
+      <div className="poster-grid">
+        {shown.map((item) => (
+          <PosterCardMemo
+            key={item.id}
+            item={item}
+            onOpen={onOpen}
+            onRemove={onRemove}
+            showRemove={showRemove}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={onToggleFavorite}
+          />
+        ))}
+      </div>
+      {visible < items.length && (
+        <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
+          <button
+            type="button"
+            className="change-source"
+            onClick={() => setVisible((v) => Math.min(items.length, v + PAGE_SIZE))}
+          >
+            Load more ({items.length - visible} remaining)
+          </button>
+        </div>
+      )}
+    </>
   );
 }

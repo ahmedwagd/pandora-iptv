@@ -14,13 +14,19 @@ import { useWatchHistory } from "./hooks/useWatchHistory";
 import { useEpg } from "./hooks/useEpg";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useBlockBrowserHotkeys } from "./hooks/useBlockBrowserHotkeys";
+import { useOnline } from "./hooks/useOnline";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { CommandPalette } from "./components/CommandPalette";
+import { useParental } from "./hooks/useParental";
+import { useLang } from "./hooks/useLang";
+import { strings } from "./i18n";
 import { useProfiles } from "./hooks/useProfiles";
 import { usePlaybackResume } from "./hooks/usePlaybackResume";
 import { Settings } from "./components/Settings";
 import { useAppStore } from "./stores/appStore";
 import { getXtreamAccount, type XtreamAccount } from "./lib/xtream";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
-import { selectCategories, selectPosterCards } from "./app/selectors/browseSelectors";
+import { selectCategories, selectPosterCards, type SortKey } from "./app/selectors/browseSelectors";
 import type { Channel, Series, XtreamCreds } from "./types";
 import "./App.css";
 
@@ -47,9 +53,21 @@ export default function App() {
     loadMovieDetail,
     disconnect,
   } = usePlaylist();
-  const { profiles, activeId, active: activeProfile, ready: profilesReady, create: createProfile, remove: removeProfile, switchTo: switchProfile } = useProfiles();
+  const {
+    profiles,
+    activeId,
+    active: activeProfile,
+    ready: profilesReady,
+    create: createProfile,
+    remove: removeProfile,
+    switchTo: switchProfile,
+  } = useProfiles();
   const { favoriteIds, toggle } = useFavorites(activeId);
-  const { creds: xtreamCreds, save: saveXtreamCreds, clear: clearXtreamCreds } = useXtreamCreds(activeId);
+  const {
+    creds: xtreamCreds,
+    save: saveXtreamCreds,
+    clear: clearXtreamCreds,
+  } = useXtreamCreds(activeId);
   const { history, record, remove: removeHistory } = useWatchHistory(activeId);
   const { clearPosition } = usePlaybackResume(activeId);
 
@@ -69,11 +87,37 @@ export default function App() {
     setCategory,
     setSearch,
   } = useAppStore();
+  const [sortKey, setSortKey] = useState<SortKey>("recent");
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const parental = useParental();
+  const { lang: appLang } = useLang();
+  const appStrings = strings[appLang];
+  const [pinAsk, setPinAsk] = useState<string | null>(null);
+  const [pinInput, setPinInput] = useState("");
 
   useBlockBrowserHotkeys(true);
+  const online = useOnline();
+  useEffect(() => {
+    const onCmd = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+      }
+      if (e.key === "?" && !(e.target as HTMLElement)?.matches("input,textarea"))
+        setHelpOpen((o) => !o);
+    };
+    window.addEventListener("keydown", onCmd);
+    return () => window.removeEventListener("keydown", onCmd);
+  }, []);
 
   const epgEnabled = sourceKind === "xtream" && contentMode === "live";
-  const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort } = useEpg(xtreamCreds, epgEnabled);
+  const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort } = useEpg(
+    xtreamCreds,
+    epgEnabled
+  );
+  const [activeEpgList, setActiveEpgList] = useState<import("./types/epg").EpgProgramme[]>([]);
   const activeEpg = active ? getEpgForChannel(active.id) : undefined;
 
   const [account, setAccount] = useState<XtreamAccount | null>(null);
@@ -94,8 +138,14 @@ export default function App() {
   }, [sourceKind, xtreamCreds]);
 
   useEffect(() => {
-    if (!active || !epgEnabled) return;
+    if (!active || !epgEnabled) {
+      setActiveEpgList([]);
+      return;
+    }
     if (!activeEpg) void fetchEpgShort(active.id);
+    void fetchEpgShort(active.id)
+      .then(setActiveEpgList)
+      .catch(() => {});
   }, [active, activeEpg, epgEnabled, fetchEpgShort]);
 
   // When active profile changes, reconcile playlist with that profile's creds
@@ -107,7 +157,16 @@ export default function App() {
       setContentMode("live");
       setScreen("home");
     }
-  }, [profilesReady, activeId, xtreamCreds, sourceKind, loading, loadFromXtream, setContentMode, setScreen]);
+  }, [
+    profilesReady,
+    activeId,
+    xtreamCreds,
+    sourceKind,
+    loading,
+    loadFromXtream,
+    setContentMode,
+    setScreen,
+  ]);
 
   const handleSwitchProfile = useCallback(
     async (id: string) => {
@@ -122,14 +181,27 @@ export default function App() {
       setScreen("home");
       await switchProfile(id);
     },
-    [activeId, disconnect, setActive, setCategory, setContentMode, setDetailTarget, setScreen, setSmartFilter, setSearch, switchProfile]
+    [
+      activeId,
+      disconnect,
+      setActive,
+      setCategory,
+      setContentMode,
+      setDetailTarget,
+      setScreen,
+      setSmartFilter,
+      setSearch,
+      switchProfile,
+    ]
   );
 
   // Global hotkeys — respects inputs (ignoreInputs)
   useHotkeys(
     {
       "/": () => {
-        const el = (document.getElementById("browse-search") as HTMLInputElement | null) ?? (document.getElementById("channel-search") as HTMLInputElement | null);
+        const el =
+          (document.getElementById("browse-search") as HTMLInputElement | null) ??
+          (document.getElementById("channel-search") as HTMLInputElement | null);
         el?.focus();
         el?.select();
       },
@@ -142,13 +214,19 @@ export default function App() {
       f: () => {
         // favorite toggle: detail > watch > browse poster (ignore in browse live)
         if (screen === "detail" && detailTarget) {
-          const id = detailTarget.kind === "movie" ? detailTarget.channel.id : `series:${detailTarget.series.id}`;
+          const id =
+            detailTarget.kind === "movie"
+              ? detailTarget.channel.id
+              : `series:${detailTarget.series.id}`;
           toggle(id);
         } else if (screen === "watch" && active) {
           // in watch, let PlayerControls handle 'f' for fullscreen — still toggle here if not live? conflict avoided by ignoring watch 'f' for favorite (fullscreen takes priority)
           // no-op in watch to preserve fullscreen on 'f'
         } else if (screen === "browse" && detailTarget) {
-          const id = detailTarget.kind === "movie" ? detailTarget.channel.id : `series:${detailTarget.series.id}`;
+          const id =
+            detailTarget.kind === "movie"
+              ? detailTarget.channel.id
+              : `series:${detailTarget.series.id}`;
           toggle(id);
         }
       },
@@ -220,7 +298,17 @@ export default function App() {
     setCategory(null);
     setSearch("");
     setScreen("home");
-  }, [disconnect, clearXtreamCreds, setActive, setCategory, setContentMode, setDetailTarget, setScreen, setSmartFilter, setSearch]);
+  }, [
+    disconnect,
+    clearXtreamCreds,
+    setActive,
+    setCategory,
+    setContentMode,
+    setDetailTarget,
+    setScreen,
+    setSmartFilter,
+    setSearch,
+  ]);
 
   const watch = useCallback(
     (channel: Channel) => {
@@ -271,9 +359,17 @@ export default function App() {
 
   const handleCategory = useCallback(
     (c: string | null) => {
+      if (c && parental.isLocked(c)) {
+        if (!parental.pin) {
+          setCategory(c);
+          return;
+        }
+        setPinAsk(c);
+        return;
+      }
       setCategory(c);
     },
-    [setCategory]
+    [setCategory, parental]
   );
 
   const browseCategories = useMemo(() => {
@@ -290,12 +386,13 @@ export default function App() {
             smartFilter,
             category,
             search,
+            sortKey,
             movies,
             series,
             history,
             favoriteIds,
           }),
-    [contentMode, smartFilter, category, search, movies, series, history, favoriteIds]
+    [contentMode, smartFilter, category, search, sortKey, movies, series, history, favoriteIds]
   );
 
   const handleTogglePosterFavorite = useCallback(
@@ -304,7 +401,10 @@ export default function App() {
         if (smartFilter === "continue") {
           const h = history.find((x) => x.id === id);
           const sid = (h as any)?.seriesId as string | undefined;
-          if (sid) { toggle(`series:${sid}`); return; }
+          if (sid) {
+            toggle(`series:${sid}`);
+            return;
+          }
           toggle(`series:${id}`);
           return;
         }
@@ -326,7 +426,9 @@ export default function App() {
 
   const handleClearWatched = useCallback(() => {
     // clear only current contentMode kind
-    const ids = history.filter((h) => (contentMode === "movie" ? h.kind === "movie" : h.kind === "episode")).map((h) => h.id);
+    const ids = history
+      .filter((h) => (contentMode === "movie" ? h.kind === "movie" : h.kind === "episode"))
+      .map((h) => h.id);
     ids.forEach((id) => clearPosition(id));
     // batch remove via clear then re-add non-matching is simpler: filter and set
     // use removeHistory per id
@@ -341,7 +443,15 @@ export default function App() {
           if (m) openMovieDetail(m);
           else {
             const h = history.find((x) => x.id === id);
-            if (h) openMovieDetail({ id: h.id, name: h.name, url: h.url, logo: h.poster, group: "Continue watching", kind: "movie" });
+            if (h)
+              openMovieDetail({
+                id: h.id,
+                name: h.name,
+                url: h.url,
+                logo: h.poster,
+                group: "Continue watching",
+                kind: "movie",
+              });
           }
           return;
         }
@@ -355,10 +465,20 @@ export default function App() {
             const sid = (h as any).seriesId as string | undefined;
             if (sid) {
               const s = series.find((x) => x.id === sid);
-              if (s) { openSeriesDetail(s); return; }
+              if (s) {
+                openSeriesDetail(s);
+                return;
+              }
             }
             // fallback: try to infer series by searching seasons? if not found, fallback to direct watch
-            watch({ id: h.id, name: h.name, url: h.url, logo: h.poster, kind: "episode", group: "" });
+            watch({
+              id: h.id,
+              name: h.name,
+              url: h.url,
+              logo: h.poster,
+              kind: "episode",
+              group: "",
+            });
           }
           return;
         }
@@ -367,6 +487,35 @@ export default function App() {
       }
     },
     [contentMode, smartFilter, history, movies, series, watch, openMovieDetail, openSeriesDetail]
+  );
+
+  const paletteCommands = useMemo(
+    () => [
+      { id: "home", label: "Go Home", hint: "Esc", run: () => goHome() },
+      { id: "movies", label: "Browse Movies", run: () => enterContent("movie") },
+      { id: "series", label: "Browse Series", run: () => enterContent("series") },
+      { id: "live", label: "Browse Live", run: () => enterContent("live") },
+      {
+        id: "favs",
+        label: "Show Favorites",
+        run: () => {
+          setScreen("browse");
+          setSmartFilter("favorites");
+        },
+      },
+      {
+        id: "continue",
+        label: "Continue Watching",
+        run: () => {
+          setScreen("browse");
+          setSmartFilter("continue");
+        },
+      },
+      { id: "settings", label: "Settings", run: () => setScreen("settings") },
+      { id: "help", label: "Keyboard Help", run: () => setHelpOpen(true) },
+      { id: "disconnect", label: "Disconnect", run: () => handleDisconnect() },
+    ],
+    [goHome, enterContent, setScreen, setSmartFilter, handleDisconnect]
   );
 
   if (!profilesReady) {
@@ -440,6 +589,8 @@ export default function App() {
         onBack={() => setScreen(detailTarget ? "detail" : "browse")}
         epgNow={activeEpg?.now}
         epgNext={activeEpg?.next}
+        epgList={activeEpgList}
+        onFetchEpg={fetchEpgShort}
         profileId={activeId}
       />
     );
@@ -489,6 +640,7 @@ export default function App() {
           getEpgForChannel={getEpgForChannel}
         />
         <main className="main">
+          {!online && <div className="banner banner-error">Offline — check your connection.</div>}
           {error && <div className="banner banner-error">{error}</div>}
           {sourceLabel && !error && (
             <div className="banner banner-info">
@@ -515,32 +667,134 @@ export default function App() {
         onHome={goHome}
       />
       <main className="browse-main">
+        {!online && <div className="banner banner-error">Offline — check your connection.</div>}
         <header className="browse-header">
-          <h1 className="browse-title">
-            {contentMode === "movie" ? "Movies" : "Series"}
-          </h1>
+          <h1 className="browse-title">{contentMode === "movie" ? "Movies" : "Series"}</h1>
           <div className="browse-header-actions">
-            <span className="browse-count">{posterCards.length} items</span>
+            <label className="browse-sort">
+              <span className="browse-sort-label">{appStrings.sort}</span>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                aria-label="Sort"
+              >
+                <option value="name-asc">{appStrings.sortAZ}</option>
+                <option value="name-desc">{appStrings.sortZA}</option>
+                <option value="recent">{appStrings.sortRecent}</option>
+              </select>
+            </label>
+            <span className="browse-count" aria-live="polite">
+              {posterCards.length} items
+            </span>
             {smartFilter === "continue" && posterCards.length > 0 && (
-              <button type="button" className="browse-clear" onClick={handleClearWatched}>Clear all</button>
+              <button type="button" className="browse-clear" onClick={handleClearWatched}>
+                Clear all
+              </button>
             )}
           </div>
         </header>
-        <PosterGrid
-          items={posterCards}
-          onOpen={handleOpenPoster}
-          onRemove={handleRemoveWatched}
-          showRemove={smartFilter === "continue"}
-          favoriteIds={favoriteIds}
-          onToggleFavorite={handleTogglePosterFavorite}
-          emptyText={
-            smartFilter === "favorites"
-              ? "No favorites yet — tap ★ to keep it here."
-              : smartFilter === "continue"
-                ? "Nothing watched yet — open something and it will show up here."
-                : "Nothing here yet."
-          }
-        />
+        {cmdOpen && (
+          <CommandPalette
+            open={cmdOpen}
+            onClose={() => setCmdOpen(false)}
+            commands={paletteCommands}
+            query={cmdQuery}
+            onQuery={setCmdQuery}
+          />
+        )}
+        {pinAsk && (
+          <div className="cmd-palette-backdrop" onClick={() => setPinAsk(null)}>
+            <div
+              className="cmd-palette"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "8px 0" }}>🔒 Locked: {pinAsk}</h3>
+              <input
+                type="password"
+                placeholder="Enter PIN"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (pinInput === parental.pin) {
+                      setCategory(pinAsk);
+                      setPinAsk(null);
+                      setPinInput("");
+                    } else {
+                      alert("Wrong PIN");
+                    }
+                  }
+                }}
+                autoFocus
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="change-source"
+                  onClick={() => {
+                    if (pinInput === parental.pin) {
+                      setCategory(pinAsk!);
+                      setPinAsk(null);
+                      setPinInput("");
+                    } else alert("Wrong PIN");
+                  }}
+                >
+                  Unlock
+                </button>
+                <button type="button" className="pc-btn" onClick={() => setPinAsk(null)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {helpOpen && (
+          <div className="cmd-palette-backdrop" onClick={() => setHelpOpen(false)}>
+            <div
+              className="cmd-palette"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 style={{ margin: "8px 0", fontSize: 14 }}>Keyboard shortcuts</h3>
+              <div style={{ fontSize: 12, lineHeight: "1.7", opacity: 0.9 }}>
+                / Focus search · Esc Back/Home · 1/2/3 Home tiles · Ctrl+K Palette · ? Help
+                <br />
+                Player: Space/k Play · m Mute · f Fullscreen · p PiP · z Fit · c Captions · ,/.
+                Speed · ←/→ Seek · ↑/↓ Volume
+                <br />
+                Grid: hover ☆ Favorite · continue ✕ Remove
+              </div>
+              <button
+                type="button"
+                className="change-source"
+                style={{ marginTop: 10 }}
+                onClick={() => setHelpOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+        <ErrorBoundary>
+          <PosterGrid
+            items={posterCards}
+            onOpen={handleOpenPoster}
+            onRemove={handleRemoveWatched}
+            showRemove={smartFilter === "continue"}
+            favoriteIds={favoriteIds}
+            onToggleFavorite={handleTogglePosterFavorite}
+            emptyText={
+              smartFilter === "favorites"
+                ? "No favorites yet — tap ★ to keep it here."
+                : smartFilter === "continue"
+                  ? "Nothing watched yet — open something and it will show up here."
+                  : "Nothing here yet."
+            }
+          />
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -1,4 +1,5 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap");
 
 @theme {
   --color-surface: #0d1511;
@@ -21,8 +22,10 @@
   --color-onSurface: #dce5dd;
   --color-onSurfaceVariant: #bacac0;
 
-  --font-display: Space Grotesk Variable, Space Grotesk, "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
-  --font-body: Archivo Narrow, Archivo Variable, Archivo, "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
+  --font-display:
+    "Space Grotesk Variable", "Space Grotesk", "Cairo", "Segoe UI", sans-serif;
+  --font-body:
+    "Archivo Narrow", "Archivo Variable", "Archivo", "Cairo", "Segoe UI", sans-serif;
   --font-mono: JetBrains Mono Variable, JetBrains Mono, "Courier New", monospace;
 
   --radius-sm: 0.25rem;
@@ -60,6 +63,58 @@
     Keep CSS variables for legacy App.css compatibility;
     new code should prefer Tailwind utilities.
     ============================================================ */
+/* ============================================================
+   Deep Sage — the "light" theme is dark-moody sage, not paper.
+   Forest signal on green-black. Same broadcast identity as :root
+   but cooler/earthier. `html[data-theme="light"]` outranks `:root`.
+   ============================================================ */
+html[data-theme="light"] {
+  --background: #0e1512;
+  --surface: #141d19;
+  --surface-dim: #0e1512;
+  --surface-bright: #232d28;
+  --surface-lowest: #0a100d;
+  --surface-low: #161f1b;
+  --surface-container: #1b2620;
+  --surface-high: #232e28;
+  --surface-highest: #2c3831;
+  --surface-variant: #2c3831;
+  --surface-soft: #1b2620;
+  --panel: #141d19;
+  --panel-2: #1b2620;
+  --raised: #232e28;
+  --edge: #33453c;
+  --hairline: rgba(220, 231, 223, 0.07);
+  --border: rgba(220, 231, 223, 0.09);
+  --outline: #7c8b82;
+  --outline-variant: #33453c;
+
+  --on-surface: #dce7df;
+  --on-surface-variant: #a9b8af;
+  --on-background: #dce7df;
+  --inverse-surface: #dce7df;
+  --inverse-on-surface: #16211b;
+  --ink: #dce7df;
+  --muted: #a9b8af;
+  --dim: #7c8b82;
+
+  --primary: #30b286;
+  --on-primary: #062b1c;
+  --primary-container: #30b286;
+  --on-primary-container: #062b1c;
+  --signal: #30b286;
+  --signal-deep: #22815b;
+  --signal-glow: rgba(48, 178, 134, 0.22);
+  --surface-tint: rgba(48, 178, 134, 0.14);
+
+  /* — Tile tints, dark edition — deep channel-coding gradients — */
+  --tile-live-bg: linear-gradient(165deg, #14402e 0%, #101a15 72%);
+  --tile-live-accent: #35d89a;
+  --tile-movie-bg: linear-gradient(165deg, #123a3c 0%, #101a15 72%);
+  --tile-movie-accent: #3ec8cc;
+  --tile-series-bg: linear-gradient(165deg, #3a2a10 0%, #101a15 72%);
+  --tile-series-accent: #e0a040;
+}
 :root {
   /* — Surfaces (tonal layering over canvas) — */
   --surface: #0d1511;
@@ -78,7 +133,7 @@
   --panel: var(--surface-low);
   --panel-2: var(--surface-container);
   --raised: var(--surface-high);
-  --edge: #3b4a42;            /* outline-variant */
+  --edge: #3b4a42; /* outline-variant */
   --hairline: rgba(59, 74, 66, 0.7);
   --outline: #85948b;
   --outline-variant: #3b4a42;
@@ -100,7 +155,7 @@
   --on-primary-container: #006245;
   --primary-fixed: #52febe;
   --primary-fixed-dim: #23e1a3;
-  --signal: #2ee6a8;          /* phosphor green — primary actions only */
+  --signal: #2ee6a8; /* phosphor green — primary actions only */
   --signal-deep: #1c9a72;
   --signal-glow: rgba(46, 230, 168, 0.24);
   --surface-tint: #23e1a3;
@@ -114,9 +169,12 @@
   --error-container: #93000a;
   --danger: #ffb4ab;
 
-  /* — Typefaces — */
-  --font-display: "Space Grotesk Variable", "Space Grotesk", "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
-  --font-body: "Archivo Narrow", "Archivo Variable", "Archivo", "Segoe UI", "Noto Sans Arabic", "Tahoma", sans-serif;
+  /* — Typefaces — Cairo for Arabic — */
+  --font-display:
+    "Space Grotesk Variable", "Space Grotesk", "Cairo", "Segoe UI", sans-serif;
+  --font-body:
+    "Archivo Narrow", "Archivo Variable", "Archivo", "Cairo", "Segoe UI",
+    sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", "Courier New", monospace;
 
   /* — Type scale — */
@@ -146,10 +204,25 @@
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
   --radius-full: 9999px;
+
+  /* — Tile tints (broadcast channel-coding) — themed per mode — */
+  --tile-live-bg: linear-gradient(165deg, #123b2c 0%, #0d1511 72%);
+  --tile-live-accent: #2ee6a8;
+  --tile-movie-bg: linear-gradient(165deg, #0f2e2a 0%, #0d1511 72%);
+  --tile-movie-accent: #98d3b5;
+  --tile-series-bg: linear-gradient(165deg, #332815 0%, #0d1511 72%);
+  --tile-series-accent: #ffc158;
 }
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
 
 /* Prevent text selection / dragging — app feels like TV, not a webpage */
 * {
@@ -157,11 +230,15 @@ html, body, #root { height: 100%; margin: 0; }
   user-select: none;
   -webkit-user-drag: none;
 }
-input, textarea, select, [contenteditable="true"] {
+input,
+textarea,
+select,
+[contenteditable="true"] {
   -webkit-user-select: text;
   user-select: text;
 }
-img, a {
+img,
+a {
   -webkit-user-drag: none;
   user-drag: none;
 }
@@ -177,22 +254,34 @@ body {
   overflow: hidden;
 }
 
-::selection { background: rgba(46, 230, 168, 0.20); }
+::selection {
+  background: rgba(46, 230, 168, 0.2);
+}
 
-button { font-family: inherit; cursor: pointer; }
-input, select { font-family: inherit; }
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+input,
+select {
+  font-family: inherit;
+}
 
 :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
   border-radius: 2px;
 }
-button:focus-visible, input:focus-visible, select:focus-visible {
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
   box-shadow: 0 0 0 4px var(--signal-glow);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -200,6 +289,35 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 
 /* Subtle scrollbars — tonal, not chrome */
-*::-webkit-scrollbar { width: 6px; height: 6px; }
-*::-webkit-scrollbar-thumb { background: #2e3732; border-radius: 4px; }
-*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #2e3732;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Deep Sage signature: ledger grain + faint rule, green-black register. */
+[data-theme="light"] body {
+  background-color: var(--background);
+  background-image:
+    /* ledger rule every 24px */
+    linear-gradient(to bottom, transparent 23px, rgba(220,231,223,0.025) 24px),
+    /* sage aura */
+    radial-gradient(1200px 600px at 20% -10%, rgba(48,178,134,0.07), transparent 60%),
+    radial-gradient(900px 500px at 90% 110%, rgba(224,160,64,0.05), transparent 60%);
+}
+[data-theme="light"] ::selection { background: rgba(48,178,134,0.25); }
+
+/* Arabic: Cairo first — clean geometric, excellent at small sizes for EPG */
+[lang="ar"], [lang="ar"] body, [dir="rtl"] {
+  --font-display: "Cairo", "Space Grotesk", sans-serif;
+  --font-body: "Cairo", "Archivo", sans-serif;
+}
+[lang="ar"] body { font-family: "Cairo", "Segoe UI", sans-serif; letter-spacing: 0; line-height: 1.65; }
+[lang="ar"] .home-title, [lang="ar"] .detail-title, [lang="ar"] .browse-title { font-family: "Cairo", sans-serif; font-weight: 700; letter-spacing: 0; }
+[lang="ar"] .channel-name, [lang="ar"] .poster-card-title { font-weight: 600; }

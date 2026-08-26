@@ -1,4 +1,5 @@
 import { memo, useMemo, useState } from "react";
+import { useEpgReminders } from "../hooks/useEpgReminders";
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
 import { MediaImage } from "./MediaImage";
@@ -15,6 +16,7 @@ interface ChannelListProps {
   loading?: boolean;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
   profileId?: string | null;
+  onEpgReminder?: (ch: Channel, prog: EpgProgramme) => void;
 }
 
 function fmtResumeRow(sec: number): string {
@@ -22,7 +24,8 @@ function fmtResumeRow(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   const h = Math.floor(m / 60);
-  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (h > 0)
+    return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 function isResumableRow(pos: number, dur: number): boolean {
@@ -42,6 +45,8 @@ const ChannelRow = memo(function ChannelRow({
   showFavorite,
   getEpgForChannel,
   profileId,
+  hasReminder,
+  onToggleReminder,
 }: {
   ch: Channel;
   idx: number;
@@ -52,6 +57,8 @@ const ChannelRow = memo(function ChannelRow({
   showFavorite: boolean;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
   profileId?: string | null;
+  hasReminder?: (id: string, start: number) => boolean;
+  onToggleReminder?: (ch: Channel, prog: EpgProgramme) => void;
 }) {
   const isActive = ch.id === activeId;
   const isFav = favoriteIds.has(ch.id);
@@ -59,6 +66,8 @@ const ChannelRow = memo(function ChannelRow({
   const { getPosition } = usePlaybackResume(profileId ?? null);
   const saved = getPosition(ch.id);
   const resumable = saved && isResumableRow(saved.position, saved.duration);
+  void hasReminder;
+  void onToggleReminder;
 
   return (
     <li
@@ -86,9 +95,15 @@ const ChannelRow = memo(function ChannelRow({
       />
       <span className="channel-name-wrap">
         <span className="channel-name">{ch.name}</span>
-        {resumable && <span className="channel-epg channel-epg--resume">↺ Resume {fmtResumeRow(saved!.position)} / {fmtResumeRow(saved!.duration)}</span>}
+        {resumable && (
+          <span className="channel-epg channel-epg--resume">
+            ↺ Resume {fmtResumeRow(saved!.position)} / {fmtResumeRow(saved!.duration)}
+          </span>
+        )}
         {!resumable && epg?.now && <span className="channel-epg">Now: {epg.now.title}</span>}
-        {!resumable && epg?.next && !epg?.now && <span className="channel-epg channel-epg--next">Next: {epg.next.title}</span>}
+        {!resumable && epg?.next && !epg?.now && (
+          <span className="channel-epg channel-epg--next">Next: {epg.next.title}</span>
+        )}
       </span>
       {showFavorite && (
         <button
@@ -122,6 +137,14 @@ export function ChannelList({
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("All");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [epgSearch, setEpgSearch] = useState(false);
+  const {
+    has: hasReminder,
+    add: addReminder,
+    remove: removeReminder,
+    due,
+    dismissDue,
+  } = useEpgReminders(profileId ?? null);
 
   const groups = useMemo(() => {
     const collator = new Intl.Collator(undefined, { sensitivity: "base" });
@@ -136,10 +159,17 @@ export function ChannelList({
     return channels.filter((c) => {
       if (favoritesOnly && !favoriteIds.has(c.id)) return false;
       if (group !== "All" && c.group !== group) return false;
-      if (term && !c.name.toLowerCase().includes(term)) return false;
-      return true;
+      if (!term) return true;
+      if (c.name.toLowerCase().includes(term)) return true;
+      if (epgSearch && getEpgForChannel) {
+        const epg = getEpgForChannel(c.id);
+        if (epg?.now && epg.now.title.toLowerCase().includes(term)) return true;
+        if (epg?.next && epg.next.title.toLowerCase().includes(term)) return true;
+        if (epg?.now?.description && epg.now.description.toLowerCase().includes(term)) return true;
+      }
+      return false;
     });
-  }, [channels, search, group, favoritesOnly, favoriteIds]);
+  }, [channels, search, group, favoritesOnly, favoriteIds, epgSearch, getEpgForChannel]);
 
   return (
     <div className="channel-panel">
@@ -164,8 +194,40 @@ export function ChannelList({
             </button>
           )}
         </div>
+        {due && (
+          <div className="epg-due-banner" role="alert">
+            <span className="epg-due-dot" aria-hidden>
+              ●
+            </span>
+            <span className="epg-due-text">
+              "{due.title}" starting now on <strong>{due.channelName}</strong>
+            </span>
+            <button
+              type="button"
+              className="epg-due-dismiss"
+              onClick={dismissDue}
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <div className="filter-row filter-row--epg">
+          <label className="epg-search-toggle">
+            <input
+              type="checkbox"
+              checked={epgSearch}
+              onChange={(e) => setEpgSearch(e.target.checked)}
+            />{" "}
+            Search programmes
+          </label>
+        </div>
         <div className="filter-row filter-row--meta">
-          <select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Filter by group">
+          <select
+            value={group}
+            onChange={(e) => setGroup(e.target.value)}
+            aria-label="Filter by group"
+          >
             {groups.map((g) => (
               <option key={g} value={g}>
                 {g}
@@ -178,7 +240,11 @@ export function ChannelList({
 
       {loading ? (
         <div className="channel-list-empty">
-          <div className="colorbar colorbar--loading" style={{ height: 2, marginBottom: 12 }} aria-hidden />
+          <div
+            className="colorbar colorbar--loading"
+            style={{ height: 2, marginBottom: 12 }}
+            aria-hidden
+          />
           <span> Tuning signal…</span>
         </div>
       ) : filtered.length === 0 ? (
@@ -199,6 +265,19 @@ export function ChannelList({
               showFavorite={showFavorite}
               getEpgForChannel={getEpgForChannel}
               profileId={profileId}
+              hasReminder={hasReminder}
+              onToggleReminder={(channel, prog) => {
+                if (hasReminder(channel.id, prog.startTime))
+                  removeReminder(`${channel.id}::${prog.startTime}`);
+                else
+                  addReminder({
+                    channelId: channel.id,
+                    channelName: channel.name,
+                    title: prog.title,
+                    startTime: prog.startTime,
+                    stopTime: prog.stopTime,
+                  });
+              }}
             />
           ))}
         </ul>

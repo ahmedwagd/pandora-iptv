@@ -3,9 +3,7 @@ import type { Channel, ContentMode, Series } from "../types";
 import type { SmartFilter } from "../components/FilterSidebar";
 
 export type Screen = "home" | "browse" | "detail" | "watch" | "settings";
-export type DetailTarget =
-  | { kind: "movie"; channel: Channel }
-  | { kind: "series"; series: Series };
+export type DetailTarget = { kind: "movie"; channel: Channel } | { kind: "series"; series: Series };
 
 interface AppStore {
   // navigation
@@ -81,6 +79,5 @@ export const useAppStore = create<AppStore>((set) => ({
     });
   },
 
-  resetBrowseFilters: () =>
-    set({ smartFilter: "all", category: null, search: "" }),
+  resetBrowseFilters: () => set({ smartFilter: "all", category: null, search: "" }),
 }));

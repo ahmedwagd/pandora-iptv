@@ -1,4 +1,6 @@
 import { memo } from "react";
+import { useLang } from "../hooks/useLang";
+import { strings } from "../i18n";
 
 export type SmartFilter = "all" | "favorites" | "continue";
 
@@ -12,6 +14,8 @@ interface FilterSidebarProps {
   search: string;
   onSearch: (s: string) => void;
   onHome: () => void;
+  isLocked?: (cat: string | null) => boolean;
+  onToggleLock?: (cat: string) => void;
 }
 
 const SidebarHeader = memo(function SidebarHeader({
@@ -21,6 +25,8 @@ const SidebarHeader = memo(function SidebarHeader({
   groupsCount: number;
   onHome: () => void;
 }) {
+  const { lang } = useLang();
+  const s = strings[lang];
   return (
     <div className="sidebar-header">
       <div className="sidebar-brand-block">
@@ -29,12 +35,12 @@ const SidebarHeader = memo(function SidebarHeader({
           <span className="signal-dot" aria-hidden>
             ●
           </span>{" "}
-          {groupsCount} groups
+          {groupsCount} {s.groups}
         </span>
       </div>
       <div className="sidebar-actions">
         <button type="button" className="change-source" onClick={onHome}>
-          Home
+          {s.home}
         </button>
       </div>
     </div>
@@ -50,10 +56,11 @@ const SmartFilterGroup = memo(function SmartFilterGroup({
   onSmartFilter: (f: SmartFilter) => void;
   showFavorites?: boolean;
 }) {
+  const s_local = strings[useLang().lang];
   const filters: Array<{ value: SmartFilter; label: string }> = [
-    { value: "all", label: "All" },
-    ...(showFavorites ? [{ value: "favorites" as SmartFilter, label: "Favorites" }] : []),
-    { value: "continue", label: "Continue" },
+    { value: "all", label: s_local.all },
+    ...(showFavorites ? [{ value: "favorites" as SmartFilter, label: s_local.favorites }] : []),
+    { value: "continue", label: s_local.continue },
   ];
   return (
     <div className="smart-filters" role="group" aria-label="Smart filters">
@@ -79,15 +86,17 @@ const SearchField = memo(function SearchField({
   search: string;
   onSearch: (s: string) => void;
 }) {
+  const { lang } = useLang();
+  const s = strings[lang];
   return (
     <div className="filter-search">
       <input
         id="browse-search"
         type="text"
-        placeholder="Search titles…"
+        placeholder={s.search}
         value={search}
         onChange={(e) => onSearch(e.target.value)}
-        aria-label="Search titles"
+        aria-label={s.searchAria}
       />
     </div>
   );
@@ -97,38 +106,59 @@ const CategoryList = memo(function CategoryList({
   categories,
   category,
   onCategory,
+  isLocked,
+  onToggleLock,
 }: {
   categories: string[];
   category: string | null;
   onCategory: (c: string | null) => void;
+  isLocked?: (cat: string | null) => boolean;
+  onToggleLock?: (cat: string) => void;
 }) {
+  const { lang } = useLang();
+  const s = strings[lang];
   return (
     <nav className="filter-categories" aria-label="Categories">
-      <div className="filter-categories-label">Categories</div>
+      <div className="filter-categories-label">{s.categories}</div>
       <button
         type="button"
         className={`filter-category ${category === null ? "active" : ""}`}
         onClick={() => onCategory(null)}
         aria-pressed={category === null}
       >
-        All
+        {s.all}
       </button>
       {categories.map((c) => (
-        <button
-          key={c}
-          type="button"
-          className={`filter-category ${category === c ? "active" : ""}`}
-          onClick={() => onCategory(c)}
-          aria-pressed={category === c}
-        >
-          {c}
-        </button>
+        <div key={c} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <button
+            type="button"
+            className={`filter-category ${category === c ? "active" : ""} ${isLocked?.(c) ? "is-locked" : ""}`}
+            onClick={() => onCategory(c)}
+            aria-pressed={category === c}
+            style={{ flex: 1 }}
+          >
+            {isLocked?.(c) ? "🔒 " : ""}
+            {c}
+          </button>
+          {onToggleLock && (
+            <button
+              type="button"
+              className="pc-btn"
+              style={{ width: 22, height: 22, padding: 0, fontSize: 10 }}
+              onClick={() => onToggleLock(c)}
+              aria-label={isLocked?.(c) ? "Unlock" : "Lock"}
+              title={isLocked?.(c) ? "Unlock category" : "Lock category"}
+            >
+              {isLocked?.(c) ? "🔓" : "🔒"}
+            </button>
+          )}
+        </div>
       ))}
     </nav>
   );
 });
 
-export function FilterSidebar({
+export function FilterSidebar({ // i18n
   smartFilter,
   onSmartFilter,
   showFavorites = true,
@@ -138,13 +168,25 @@ export function FilterSidebar({
   search,
   onSearch,
   onHome,
+  isLocked,
+  onToggleLock,
 }: FilterSidebarProps) {
   return (
     <aside className="filter-sidebar">
       <SidebarHeader groupsCount={categories.length} onHome={onHome} />
-      <SmartFilterGroup smartFilter={smartFilter} onSmartFilter={onSmartFilter} showFavorites={showFavorites} />
+      <SmartFilterGroup
+        smartFilter={smartFilter}
+        onSmartFilter={onSmartFilter}
+        showFavorites={showFavorites}
+      />
       <SearchField search={search} onSearch={onSearch} />
-      <CategoryList categories={categories} category={category} onCategory={onCategory} />
+      <CategoryList
+        categories={categories}
+        category={category}
+        onCategory={onCategory}
+        isLocked={isLocked}
+        onToggleLock={onToggleLock}
+      />
     </aside>
   );
 }

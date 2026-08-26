@@ -204,7 +204,9 @@ export function usePlaylist() {
     setMovieDetailLoading(true);
     setMovieDetail(null);
     try {
-      const detail = await getXtreamMovieDetail(creds, tauriFetch, streamId, { signal: ctrl.signal });
+      const detail = await getXtreamMovieDetail(creds, tauriFetch, streamId, {
+        signal: ctrl.signal,
+      });
       if (!ctrl.signal.aborted) setMovieDetail(detail);
     } catch (e) {
       if ((e as DOMException)?.name === "AbortError") return;

@@ -1,6 +1,8 @@
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
 import { Player } from "./Player";
+import { EpgTimeline } from "./epg/EpgTimeline";
+import { useEpgReminders } from "../hooks/useEpgReminders";
 
 interface WatchViewProps {
   channel: Channel;
@@ -8,16 +10,28 @@ interface WatchViewProps {
   epgNow?: EpgProgramme;
   epgNext?: EpgProgramme;
   profileId?: string | null;
+  epgList?: EpgProgramme[];
+  onFetchEpg?: (id: string) => Promise<EpgProgramme[]>;
 }
 
 function formatEpgTime(p: EpgProgramme): string {
   const s = new Date(p.startTime);
   const e = new Date(p.stopTime);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(s.getHours())}:${pad(s.getMinutes())}–${pad(e.getHours())}:${pad(e.getMinutes())}`;
+  const opts: Intl.DateTimeFormatOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
+  return `${s.toLocaleTimeString(undefined, opts)}–${e.toLocaleTimeString(undefined, opts)}`;
 }
 
-export function WatchView({ channel, onBack, epgNow, epgNext, profileId = null }: WatchViewProps) {
+export function WatchView({
+  channel,
+  onBack,
+  epgNow,
+  epgNext,
+  profileId = null,
+  epgList = [],
+  onFetchEpg,
+}: WatchViewProps) {
+  const { has: hasRem, add: addRem, remove: remRem } = useEpgReminders(profileId);
+  const progs = epgList.length ? epgList : ([epgNow, epgNext].filter(Boolean) as EpgProgramme[]);
   return (
     <div className="watch">
       <header className="watch-bar">
@@ -33,11 +47,15 @@ export function WatchView({ channel, onBack, epgNow, epgNext, profileId = null }
             {channel.group} · Live
             {epgNow && (
               <span className="watch-epg" title={epgNow.description}>
-                {" "}· Now: {epgNow.title} ({formatEpgTime(epgNow)})
+                {" "}
+                · Now: {epgNow.title} ({formatEpgTime(epgNow)})
               </span>
             )}
             {!epgNow && epgNext && (
-              <span className="watch-epg watch-epg--next"> · Next: {epgNext.title} ({formatEpgTime(epgNext)})</span>
+              <span className="watch-epg watch-epg--next">
+                {" "}
+                · Next: {epgNext.title} ({formatEpgTime(epgNext)})
+              </span>
             )}
           </span>
         </div>
@@ -45,6 +63,40 @@ export function WatchView({ channel, onBack, epgNow, epgNext, profileId = null }
       <div className="watch-stage">
         <Player channel={channel} onBack={onBack} profileId={profileId} />
       </div>
+      {(progs.length > 0 || onFetchEpg) && (
+        <div className="watch-epg-panel">
+          <EpgTimeline
+            programmes={progs}
+            channelName={channel.name}
+            onReminder={(p) => {
+              if (hasRem(channel.id, p.startTime)) remRem(`${channel.id}::${p.startTime}`);
+              else
+                addRem({
+                  channelId: channel.id,
+                  channelName: channel.name,
+                  title: p.title,
+                  startTime: p.startTime,
+                  stopTime: p.stopTime,
+                });
+            }}
+            hasReminder={(p) => hasRem(channel.id, p.startTime)}
+          />
+          {progs.length === 0 && (
+            <button
+              type="button"
+              className="epg-load"
+              onClick={async () => {
+                if (onFetchEpg) {
+                  const list = await onFetchEpg(channel.id);
+                  /* handled via parent state would be better but fallback */ console.log(list);
+                }
+              }}
+            >
+              Load EPG
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

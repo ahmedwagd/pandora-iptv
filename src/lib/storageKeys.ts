@@ -10,6 +10,7 @@
   playbackSpeed: "playbackSpeed",
   subtitleEnabled: "subtitleEnabled",
   playbackPositions: "playbackPositions",
+  epgReminders: "epgReminders",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys] | string;

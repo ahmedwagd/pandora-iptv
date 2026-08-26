@@ -113,21 +113,29 @@ export interface XtreamAccount {
 export type FetchFn = (
   url: string,
   init?: { signal?: AbortSignal }
-) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown>; text?: () => Promise<string> }>;
+) => Promise<{
+  ok: boolean;
+  status: number;
+  json: () => Promise<unknown>;
+  text?: () => Promise<string>;
+}>;
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RETRIES = 1;
 
 function withTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
   if (!timeoutMs) return signal;
-  const timeoutSignal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined;
+  const timeoutSignal =
+    typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(timeoutMs) : undefined;
   if (!timeoutSignal) return signal;
   if (!signal) return timeoutSignal;
   // Combine: abort if either aborts
   const combined = new AbortController();
   const onAbort = () => combined.abort(signal.reason ?? timeoutSignal.reason);
   signal.addEventListener("abort", onAbort, { once: true });
-  timeoutSignal.addEventListener("abort", () => combined.abort(timeoutSignal.reason), { once: true });
+  timeoutSignal.addEventListener("abort", () => combined.abort(timeoutSignal.reason), {
+    once: true,
+  });
   return combined.signal;
 }
 
@@ -237,7 +245,11 @@ function formatExpDate(exp: string | number | null | undefined): string | null {
   const ts = toTimestamp(exp);
   if (ts == null) return null;
   try {
-    return new Date(ts).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    return new Date(ts).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   } catch {
     return null;
   }
@@ -451,7 +463,9 @@ function parseEpgTime(value: string | number | undefined): number | undefined {
 function toEpgProgramme(raw: XtreamEpgListing, fallbackChannelId: string): EpgProgramme | null {
   const title = raw.title ?? raw.name ?? "";
   if (!title) return null;
-  const channelId = String(raw.channel_id ?? raw.id ?? raw.epg_id ?? raw.stream_id ?? fallbackChannelId);
+  const channelId = String(
+    raw.channel_id ?? raw.id ?? raw.epg_id ?? raw.stream_id ?? fallbackChannelId
+  );
   const startStr = raw.start;
   const stopStr = raw.stop ?? raw.end ?? "";
   const startTime = parseEpgTime(raw.start_timestamp ?? startStr);
@@ -474,7 +488,11 @@ function extractListings(data: unknown): XtreamEpgListing[] {
   // common: { epg_listings: [...] }
   if (Array.isArray(obj.epg_listings)) return obj.epg_listings as XtreamEpgListing[];
   // provider quirk: { epg_listings: { "123": {...}, "456": [...] } }
-  if (obj.epg_listings && typeof obj.epg_listings === "object" && !Array.isArray(obj.epg_listings)) {
+  if (
+    obj.epg_listings &&
+    typeof obj.epg_listings === "object" &&
+    !Array.isArray(obj.epg_listings)
+  ) {
     const map = obj.epg_listings as Record<string, unknown>;
     const out: XtreamEpgListing[] = [];
     for (const [cid, val] of Object.entries(map)) {

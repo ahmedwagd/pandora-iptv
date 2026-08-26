@@ -14,10 +14,14 @@ const MIN_SAVE_INTERVAL_MS = 4000;
  * Series episodes are distinct ids, so every episode tracks independently.
  */
 export function usePlaybackResume(profileId: string | null = null) {
-  const key = profileId ? scopedKey(StorageKeys.playbackPositions, profileId) : StorageKeys.playbackPositions;
+  const key = profileId
+    ? scopedKey(StorageKeys.playbackPositions, profileId)
+    : StorageKeys.playbackPositions;
   const [positions, setPositions] = useState<PositionsMap>({});
   const positionsRef = useRef<PositionsMap>({});
-  useEffect(() => { positionsRef.current = positions; }, [positions]);
+  useEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
   const lastSaveRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -44,7 +48,8 @@ export function usePlaybackResume(profileId: string | null = null) {
       const now = Date.now();
       const last = lastSaveRef.current.get(id) ?? 0;
       const prev = positionsRef.current[id];
-      if (now - last < MIN_SAVE_INTERVAL_MS && prev && Math.abs(prev.position - position) < 10) return;
+      if (now - last < MIN_SAVE_INTERVAL_MS && prev && Math.abs(prev.position - position) < 10)
+        return;
       lastSaveRef.current.set(id, now);
       const entry: PlaybackPosition = { position, duration, updatedAt: now };
       setPositions((prevMap) => {

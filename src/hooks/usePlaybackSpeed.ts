@@ -3,7 +3,7 @@ import { getValue, setValue } from "../lib/store";
 import { StorageKeys } from "../lib/storageKeys";
 
 export const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
-export type SpeedOption = typeof SPEED_OPTIONS[number];
+export type SpeedOption = (typeof SPEED_OPTIONS)[number];
 
 const DEFAULT_SPEED = 1;
 
@@ -14,7 +14,10 @@ function clampSpeed(n: number): number {
   let bestDiff = Infinity;
   for (const s of SPEED_OPTIONS) {
     const d = Math.abs(s - n);
-    if (d < bestDiff) { bestDiff = d; best = s; }
+    if (d < bestDiff) {
+      bestDiff = d;
+      best = s;
+    }
   }
   return best;
 }
@@ -30,7 +33,9 @@ export function usePlaybackSpeed() {
         setSpeed(clampSpeed(saved));
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const saveSpeed = useCallback((v: number) => {

@@ -37,7 +37,10 @@ export function useWatchHistory(profileId: string | null = null) {
   const record = useCallback(
     (item: Omit<WatchItem, "watchedAt">) => {
       setHistory((prev) => {
-        const next = [{ ...item, watchedAt: Date.now() }, ...prev.filter((i) => i.id !== item.id)].slice(0, MAX_ITEMS);
+        const next = [
+          { ...item, watchedAt: Date.now() },
+          ...prev.filter((i) => i.id !== item.id),
+        ].slice(0, MAX_ITEMS);
         const redacted = next.map((i) => ({ ...i, url: redactUrl(i.url) }));
         void setValue(key, redacted);
         return next;
@@ -50,7 +53,10 @@ export function useWatchHistory(profileId: string | null = null) {
     (id: string) => {
       setHistory((prev) => {
         const next = prev.filter((i) => i.id !== id);
-        void setValue(key, next.map((i) => ({ ...i, url: redactUrl(i.url) })));
+        void setValue(
+          key,
+          next.map((i) => ({ ...i, url: redactUrl(i.url) }))
+        );
         return next;
       });
     },

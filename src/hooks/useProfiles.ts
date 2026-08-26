@@ -35,13 +35,17 @@ export function useProfiles() {
         // copy legacy data into default profile namespace (keep legacy keys for fallback)
         if (legacyCreds) await setValue(scopedKey(StorageKeys.xtreamCreds, def.id), legacyCreds);
         if (legacyFavs) await setValue(scopedKey(StorageKeys.favoriteIds, def.id), legacyFavs);
-        if (legacyHistory) await setValue(scopedKey(StorageKeys.watchHistory, def.id), legacyHistory);
+        if (legacyHistory)
+          await setValue(scopedKey(StorageKeys.watchHistory, def.id), legacyHistory);
 
         setProfiles(nextProfiles);
         setActiveId(def.id);
       } else {
         setProfiles(savedProfiles);
-        const active = savedActive && savedProfiles.some((p) => p.id === savedActive) ? savedActive : savedProfiles[0].id;
+        const active =
+          savedActive && savedProfiles.some((p) => p.id === savedActive)
+            ? savedActive
+            : savedProfiles[0].id;
         if (active !== savedActive) await setValue(StorageKeys.activeProfileId, active);
         setActiveId(active);
       }
@@ -91,11 +95,14 @@ export function useProfiles() {
     [profiles, activeId]
   );
 
-  const switchTo = useCallback(async (id: string) => {
-    if (!profiles.some((p) => p.id === id)) return;
-    setActiveId(id);
-    await setValue(StorageKeys.activeProfileId, id);
-  }, [profiles]);
+  const switchTo = useCallback(
+    async (id: string) => {
+      if (!profiles.some((p) => p.id === id)) return;
+      setActiveId(id);
+      await setValue(StorageKeys.activeProfileId, id);
+    },
+    [profiles]
+  );
 
   const active = profiles.find((p) => p.id === activeId) ?? null;
 
