@@ -1,6 +1,57 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-surface: #0d1511;
+  --color-surface-dim: #0d1511;
+  --color-surface-lowest: #08100c;
+  --color-surface-low: #151d19;
+  --color-surface-container: #19211d;
+  --color-surface-high: #242c27;
+  --color-surface-highest: #2e3732;
+  --color-surface-variant: #2e3732;
+  --color-surface-bright: #333b36;
+
+  --color-signal: #2ee6a8;
+  --color-signal-deep: #1c9a72;
+  --color-signal-glow: rgba(46, 230, 168, 0.24);
+
+  --color-outline: #85948b;
+  --color-outline-variant: #3b4a42;
+
+  --color-onSurface: #dce5dd;
+  --color-onSurfaceVariant: #bacac0;
+
+  --font-display: Space Grotesk Variable, Space Grotesk, sans-serif;
+  --font-body: Archivo Narrow, Archivo Variable, Archivo, sans-serif;
+  --font-mono: JetBrains Mono Variable, JetBrains Mono, monospace;
+
+  --radius-sm: 0.25rem;
+  --radius: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+
+  --spacing-safe: 48px;
+  --spacing-gutter: 24px;
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
 
 /* ============================================================
     SIGNAL — Premium IPTV Design System
