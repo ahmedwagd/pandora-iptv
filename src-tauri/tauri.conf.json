@@ -39,9 +39,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI2QkM3OEQ4QTc0NEYyQUMKUldTczhrU24ySGk4SnBGTGFrT2xCN0lxVEttWWhMRDNLdS8wYXN6bHFJOHdyakxxV0Y0SU1pbWMK",
       "endpoints": [
-        "https://github.com/ahmed/pandoraiptv/releases/latest/download/latest.json"
+        "https://github.com/ahmedwagd/pandora-iptv/releases/latest/download/latest.json"
       ]
     }
   }
