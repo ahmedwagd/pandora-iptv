@@ -62,6 +62,8 @@ export interface WatchItem {
   position?: number;
   /** total duration in seconds at time of save */
   duration?: number;
+  /** for episodes: parent series id */
+  seriesId?: string;
 }
 
 export interface PlaybackPosition {

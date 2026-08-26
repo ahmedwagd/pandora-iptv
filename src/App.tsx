@@ -222,16 +222,18 @@ export default function App() {
   const watch = useCallback(
     (channel: Channel) => {
       setActive(channel);
+      const seriesId = detailTarget?.kind === "series" ? detailTarget.series.id : undefined;
       record({
         id: channel.id,
         name: channel.name,
         poster: channel.logo,
         kind: channel.kind ?? "movie",
         url: channel.url,
+        seriesId,
       });
       setScreen("watch");
     },
-    [record, setActive, setScreen]
+    [record, setActive, setScreen, detailTarget]
   );
 
   const openMovieDetail = useCallback(
@@ -314,9 +316,11 @@ export default function App() {
     (id: string) => {
       if (contentMode === "movie") {
         if (smartFilter === "continue") {
-          const h = history.find((x) => x.id === id);
-          if (h) {
-            watch({ id: h.id, name: h.name, url: h.url, logo: h.poster, kind: "movie", group: "Continue watching" });
+          const m = movies.find((x) => x.id === id);
+          if (m) openMovieDetail(m);
+          else {
+            const h = history.find((x) => x.id === id);
+            if (h) openMovieDetail({ id: h.id, name: h.name, url: h.url, logo: h.poster, group: "Continue watching", kind: "movie" });
           }
           return;
         }
@@ -326,6 +330,13 @@ export default function App() {
         if (smartFilter === "continue") {
           const h = history.find((x) => x.id === id);
           if (h) {
+            // try to open parent series detail so user sees Resume button per episode
+            const sid = (h as any).seriesId as string | undefined;
+            if (sid) {
+              const s = series.find((x) => x.id === sid);
+              if (s) { openSeriesDetail(s); return; }
+            }
+            // fallback: try to infer series by searching seasons? if not found, fallback to direct watch
             watch({ id: h.id, name: h.name, url: h.url, logo: h.poster, kind: "episode", group: "" });
           }
           return;

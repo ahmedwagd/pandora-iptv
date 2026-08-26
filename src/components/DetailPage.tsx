@@ -3,6 +3,7 @@ import type { Channel, MovieDetail, Season, Series } from "../types";
 import { ChannelList } from "./ChannelList";
 import { MediaImage } from "./MediaImage";
 import { usePlaybackResume } from "../hooks/usePlaybackResume";
+import { useWatchHistory } from "../hooks/useWatchHistory";
 
 interface CommonProps {
   onBack: () => void;
@@ -187,6 +188,7 @@ function isResumable(pos: number, dur: number): boolean {
 export function DetailPage(props: DetailProps) {
   const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh, profileId } = props as CommonProps & { profileId?: string | null };
   const { getPosition } = usePlaybackResume(profileId ?? null);
+  const { history } = useWatchHistory(profileId ?? null);
 
   const title = props.kind === "movie" ? props.channel.name : props.series.name;
   const poster = props.kind === "movie" ? props.channel.logo : props.series.cover;
@@ -214,9 +216,33 @@ export function DetailPage(props: DetailProps) {
     if (props.kind === "movie") onWatch(props.channel);
   };
 
+  const seriesResume = useMemo(() => {
+    if (props.kind !== "series") return null;
+    // history is newest first; find latest resumable episode for this series
+    for (const h of history) {
+      if (h.kind !== "episode" || (h.seriesId && h.seriesId !== props.series.id)) continue;
+      // if history has no seriesId (old data), try to infer by searching seasons for h.id
+      let belongs = !!h.seriesId;
+      if (!belongs) {
+        for (const s of props.seasons) if (s.episodes.some((e) => e.id === h.id)) { belongs = true; break; }
+        if (!belongs) continue;
+      }
+      const pos = getPosition(h.id);
+      if (pos && isResumable(pos.position, pos.duration)) {
+        // find actual episode Channel to play (has correct url, not redacted)
+        let ep: Channel | null = null;
+        for (const s of props.seasons) { const f = s.episodes.find((e) => e.id === h.id); if (f) { ep = f; break; } }
+        // fallback to history-derived channel if not in seasons (not yet loaded)
+        if (!ep) ep = { id: h.id, name: h.name, url: h.url, logo: h.poster, group: "", kind: "episode" };
+        return { ep, pos, name: h.name };
+      }
+    }
+    return null;
+  }, [props, history, getPosition]);
+
   const movieResume = props.kind === "movie" ? getPosition(props.channel.id) : undefined;
   const movieResumable = movieResume && isResumable(movieResume.position, movieResume.duration);
-  const movieResumeLabel = movieResumable ? `↺ Resume from ${fmtResume(movieResume!.position)}` : null;
+  const movieResumeLabel = movieResumable ? `Resume from ${fmtResume(movieResume!.position)}` : null;
 
   const ghostNum = useMemo(() => {
     const seed = title.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -311,23 +337,40 @@ export function DetailPage(props: DetailProps) {
 
               <div className="cinematic-actions">
                 {props.kind === "movie" ? (
-                  <button type="button" className="cinematic-watch" onClick={handleWatch}>
-                    <span className="cinematic-watch-icon">{movieResumable ? "↺" : "▶"}</span> {movieResumable ? movieResumeLabel : "Watch"}
-                  </button>
+                  <>
+                    <button type="button" className="cinematic-watch" onClick={handleWatch}>
+                      <span className="cinematic-watch-icon">{movieResumable ? "↺" : "▶"}</span> {movieResumable ? movieResumeLabel : "Watch"}
+                    </button>
+                    <button
+                      type="button"
+                      className={`cinematic-icon-btn ${isFavorite ? "is-active" : ""}`}
+                      onClick={handleFavorite}
+                      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                      aria-pressed={isFavorite}
+                    >
+                      <span aria-hidden>★</span>
+                    </button>
+                  </>
+                ) : seriesResume ? (
+                  <>
+                    <button type="button" className="cinematic-watch" onClick={() => seriesResume.ep && onWatch(seriesResume.ep)}>
+                      <span className="cinematic-watch-icon">↺</span> Resume {seriesResume.name} from {fmtResume(seriesResume.pos.position)}
+                    </button>
+                    <button
+                      type="button"
+                      className={`cinematic-icon-btn ${isFavorite ? "is-active" : ""}`}
+                      onClick={handleFavorite}
+                      aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                      aria-pressed={isFavorite}
+                    >
+                      <span aria-hidden>★</span>
+                    </button>
+                  </>
                 ) : (
                   <button type="button" className="cinematic-watch" onClick={handleFavorite}>
                     <span className="cinematic-watch-icon">★</span> {isFavorite ? "Favorited" : "Add to favorites"}
                   </button>
                 )}
-                <button
-                  type="button"
-                  className={`cinematic-icon-btn ${isFavorite ? "is-active" : ""}`}
-                  onClick={handleFavorite}
-                  aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-                  aria-pressed={isFavorite}
-                >
-                  <span aria-hidden>★</span>
-                </button>
               </div>
             </div>
           </div>
