@@ -1,15 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { load, Store } from "@tauri-apps/plugin-store";
+import { deleteValue, getValue, setValue } from "../lib/store";
+import { StorageKeys } from "../lib/storageKeys";
 import type { XtreamCreds } from "../types";
-
-const STORE_FILE = "iptv-app-data.json";
-const XTREAM_KEY = "xtreamCreds";
-
-let storePromise: Promise<Store> | null = null;
-function getStore() {
-  if (!storePromise) storePromise = load(STORE_FILE, { autoSave: true });
-  return storePromise;
-}
 
 /**
  * Persists Xtream Codes credentials (server/username/password) to disk
@@ -22,8 +14,7 @@ export function useXtreamCreds() {
 
   useEffect(() => {
     (async () => {
-      const store = await getStore();
-      const saved = await store.get<XtreamCreds>(XTREAM_KEY);
+      const saved = await getValue<XtreamCreds>(StorageKeys.xtreamCreds);
       if (saved) setCreds(saved);
       setReady(true);
     })();
@@ -31,16 +22,12 @@ export function useXtreamCreds() {
 
   const save = useCallback((c: XtreamCreds) => {
     setCreds(c);
-    getStore().then((store) => {
-      store.set(XTREAM_KEY, c);
-    });
+    setValue(StorageKeys.xtreamCreds, c);
   }, []);
 
   const clear = useCallback(() => {
     setCreds(null);
-    getStore().then((store) => {
-      store.delete(XTREAM_KEY);
-    });
+    deleteValue(StorageKeys.xtreamCreds);
   }, []);
 
   return { creds, save, clear, ready };

@@ -56,12 +56,17 @@ export function Player({ channel }: PlayerProps) {
       });
     } else {
       // Native playback path (Safari HLS, or non-HLS direct streams)
+      // Clear previous listeners to avoid leaks on rapid channel switches
+      video.onloadeddata = null;
+      video.onerror = null;
       video.src = channel.url;
-      video.onloadeddata = () => setLoading(false);
-      video.onerror = () => {
+      const onLoaded = () => setLoading(false);
+      const onErr = () => {
         setLoading(false);
         setError("Unable to play this stream.");
       };
+      video.addEventListener("loadeddata", onLoaded, { once: true });
+      video.addEventListener("error", onErr, { once: true });
       video.play().catch(() => {
         /* autoplay may be blocked */
       });
@@ -71,6 +76,13 @@ export function Player({ channel }: PlayerProps) {
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
+      }
+      // Remove native listeners + reset src to stop in-flight fetch
+      if (video) {
+        video.onloadeddata = null;
+        video.onerror = null;
+        video.removeAttribute("src");
+        video.load();
       }
     };
   }, [channel]);

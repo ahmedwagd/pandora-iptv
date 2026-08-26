@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { Channel, MovieDetail, Season, Series } from "../types";
 import { ChannelList } from "./ChannelList";
 import { MediaImage } from "./MediaImage";
@@ -17,17 +17,157 @@ type DetailProps = CommonProps &
     | { kind: "series"; series: Series; seasons: Season[]; episodesLoading: boolean }
   );
 
+const DetailHeader = memo(function DetailHeader({
+  onBack,
+  onRefresh,
+  isLoading,
+}: {
+  onBack: () => void;
+  onRefresh?: () => void;
+  isLoading: boolean;
+}) {
+  return (
+    <header className="cinematic-top">
+      <button className="cinematic-round" onClick={onBack} aria-label="Back">
+        <span aria-hidden>←</span>
+      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          className="cinematic-round"
+          onClick={onRefresh}
+          aria-label="Refresh"
+          title="Refresh"
+          disabled={!onRefresh || isLoading}
+          style={{ opacity: onRefresh ? 1 : 0.45, cursor: onRefresh ? "pointer" : "default" }}
+        >
+          <span aria-hidden className={isLoading ? "spin" : ""}>
+            ↻
+          </span>
+        </button>
+      </div>
+    </header>
+  );
+});
+
+const Backdrop = memo(function Backdrop({ backdrop }: { backdrop?: string }) {
+  return (
+    <div className="cinematic-backdrop-wrap" aria-hidden>
+      {backdrop ? (
+        <div className="cinematic-backdrop" style={{ backgroundImage: `url(${JSON.stringify(backdrop)})` }} />
+      ) : (
+        <div className="cinematic-backdrop cinematic-backdrop--fallback" />
+      )}
+      <div className="cinematic-gradient" />
+      <div className="cinematic-scan" aria-hidden />
+    </div>
+  );
+});
+
+const Bento = memo(function Bento({
+  cast,
+  genre,
+  rating,
+}: {
+  cast?: string;
+  genre?: string;
+  rating?: string;
+}) {
+  return (
+    <>
+      <div className="cinematic-divider" />
+      <div className="cinematic-bento">
+        <div className="bento-cell">
+          <span className="bento-label">Cast — principal</span>
+          <span className="bento-value" style={{ fontSize: 14, lineHeight: "1.45" }}>
+            {cast ?? "—"}
+          </span>
+        </div>
+        <div className="bento-cell">
+          <span className="bento-label">Genre · Master</span>
+          <span className="bento-value">{genre ? `${genre} · 4K HDR` : "—"}</span>
+        </div>
+        <div className="bento-cell">
+          <span className="bento-label">Audio · Container</span>
+          <span className="bento-value">Dolby Atmos 5.1 · 48 kHz</span>
+        </div>
+        <div className="bento-cell">
+          <span className="bento-label">Rating · Signal</span>
+          <span className="bento-value bento-value--with-icon">
+            <span aria-hidden style={{ color: "var(--primary-container)" }}>
+              ★
+            </span>{" "}
+            {rating ?? "—"} <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--on-surface-variant)", marginLeft: 6 }}>BT.709</span>
+          </span>
+        </div>
+      </div>
+    </>
+  );
+});
+
+const SeasonSection = memo(function SeasonSection({
+  seasons,
+  episodesLoading,
+  onWatch,
+  favoriteIds,
+  onToggleFavorite,
+}: {
+  seasons: Season[];
+  episodesLoading: boolean;
+  onWatch: (c: Channel) => void;
+  favoriteIds: Set<string>;
+  onToggleFavorite: (id: string) => void;
+}) {
+  const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
+  const selectedSeason = useMemo(() => {
+    if (seasons.length === 0) return null;
+    return seasons.find((s) => s.number === seasonNumber) ?? seasons[0];
+  }, [seasons, seasonNumber]);
+
+  if (episodesLoading) return <p className="cinematic-note">Loading episodes…</p>;
+  if (seasons.length === 0) return <p className="cinematic-note">No episodes found.</p>;
+
+  return (
+    <>
+      {seasons.length > 1 && (
+        <div className="season-picker">
+          {seasons.map((s) => (
+            <button
+              key={s.number}
+              type="button"
+              className={`season-pick ${s.number === selectedSeason?.number ? "active" : ""}`}
+              onClick={() => setSeasonNumber(s.number)}
+              aria-pressed={s.number === selectedSeason?.number}
+            >
+              {s.name} <span className="season-pick-count">{s.episodes.length}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selectedSeason && (
+        <div className="season-block">
+          <div className="season-title">
+            {selectedSeason.name} · {selectedSeason.episodes.length} episodes
+          </div>
+          <ChannelList
+            channels={selectedSeason.episodes}
+            activeId={null}
+            favoriteIds={favoriteIds}
+            onSelect={onWatch}
+            onToggleFavorite={onToggleFavorite}
+            showFavorite={false}
+          />
+        </div>
+      )}
+    </>
+  );
+});
+
 export function DetailPage(props: DetailProps) {
   const { onBack, onWatch, favoriteIds, onToggleFavorite, onRefresh } = props;
-  const [seasonNumber, setSeasonNumber] = useState<number | null>(null);
 
   const title = props.kind === "movie" ? props.channel.name : props.series.name;
   const poster = props.kind === "movie" ? props.channel.logo : props.series.cover;
-  // Movie background uses the movie image as cover — backdrop first, then poster, then channel logo as fallback
-  const coverImage =
-    props.kind === "movie"
-      ? props.detail?.backdrop ?? props.detail?.poster ?? poster
-      : undefined;
+  const coverImage = props.kind === "movie" ? props.detail?.backdrop ?? props.detail?.poster ?? poster : undefined;
   const backdrop = coverImage;
 
   const year = props.kind === "movie" ? props.detail?.year : props.series.year;
@@ -36,12 +176,6 @@ export function DetailPage(props: DetailProps) {
   const duration = props.kind === "movie" ? props.detail?.duration : undefined;
   const plot = props.kind === "movie" ? props.detail?.plot : props.series.plot;
   const cast = props.kind === "movie" ? props.detail?.cast : props.series.cast;
-
-  const seasons = props.kind === "series" ? props.seasons : [];
-  const selectedSeason = useMemo(() => {
-    if (seasons.length === 0) return null;
-    return seasons.find((s) => s.number === seasonNumber) ?? seasons[0];
-  }, [seasons, seasonNumber]);
 
   const isFavorite =
     props.kind === "movie"
@@ -57,7 +191,6 @@ export function DetailPage(props: DetailProps) {
     if (props.kind === "movie") onWatch(props.channel);
   };
 
-  // Broadcast artifact — channel seed for ghost watermark (deterministic, not random)
   const ghostNum = useMemo(() => {
     const seed = title.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
     const n = (seed % 99) + 1;
@@ -68,52 +201,21 @@ export function DetailPage(props: DetailProps) {
 
   return (
     <div className="detail detail--cinematic">
-      {/* Fixed floating header — immersion first, nav second */}
-      <header className="cinematic-top">
-        <button className="cinematic-round" onClick={onBack} aria-label="Back">
-          <span aria-hidden>←</span>
-        </button>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            className="cinematic-round"
-            onClick={onRefresh}
-            aria-label="Refresh"
-            title="Refresh"
-            disabled={!onRefresh || isLoading}
-            style={{ opacity: onRefresh ? 1 : 0.45, cursor: onRefresh ? "pointer" : "default" }}
-          >
-            <span aria-hidden className={isLoading ? "spin" : ""}>
-              ↻
-            </span>
-          </button>
-        </div>
-      </header>
+      <DetailHeader onBack={onBack} onRefresh={onRefresh} isLoading={isLoading} />
 
       <div className="cinematic-scroll">
-        {/* Signature SMPTE strip — the one memorable thing, 3px, localized glow */}
         <div className="cinematic-smpte" aria-hidden>
           <div className="colorbar colorbar--loading" style={{ height: 3 }} />
         </div>
 
-        {/* Backdrop — thesis: the content is the hero */}
-        <div className="cinematic-backdrop-wrap" aria-hidden>
-          {backdrop ? (
-            <div className="cinematic-backdrop" style={{ backgroundImage: `url(${JSON.stringify(backdrop)})` }} />
-          ) : (
-            <div className="cinematic-backdrop cinematic-backdrop--fallback" />
-          )}
-          <div className="cinematic-gradient" />
-          <div className="cinematic-scan" aria-hidden />
-        </div>
+        <Backdrop backdrop={backdrop} />
 
-        {/* Content */}
         <div className="cinematic-content">
           <span className="cinematic-ghost" aria-hidden>
             {ghostNum}
           </span>
 
           <div className="cinematic-grid">
-            {/* Poster — hidden on mobile per spec */}
             <div className="cinematic-poster-wrap">
               <div className="cinematic-poster-frame">
                 <MediaImage
@@ -127,7 +229,6 @@ export function DetailPage(props: DetailProps) {
             </div>
 
             <div className="cinematic-info">
-              {/* Eyebrow — power cinephile: precise signal, not marketing */}
               <p className="cinematic-eyebrow">
                 <span className="signal-dot" aria-hidden>
                   ●
@@ -138,7 +239,6 @@ export function DetailPage(props: DetailProps) {
 
               <h1 className="cinematic-title">{title}</h1>
 
-              {/* Full metadata — year / rating / genre / duration + technical caps */}
               <div className="cinematic-meta">
                 {year && <span className="chip chip--solid">{year}</span>}
                 {rating && (
@@ -184,15 +284,16 @@ export function DetailPage(props: DetailProps) {
 
               <div className="cinematic-actions">
                 {props.kind === "movie" ? (
-                  <button className="cinematic-watch" onClick={handleWatch}>
+                  <button type="button" className="cinematic-watch" onClick={handleWatch}>
                     <span className="cinematic-watch-icon">▶</span> Watch
                   </button>
                 ) : (
-                  <button className="cinematic-watch" onClick={handleFavorite}>
+                  <button type="button" className="cinematic-watch" onClick={handleFavorite}>
                     <span className="cinematic-watch-icon">★</span> {isFavorite ? "Favorited" : "Add to favorites"}
                   </button>
                 )}
                 <button
+                  type="button"
                   className={`cinematic-icon-btn ${isFavorite ? "is-active" : ""}`}
                   onClick={handleFavorite}
                   aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
@@ -204,73 +305,17 @@ export function DetailPage(props: DetailProps) {
             </div>
           </div>
 
-          {/* Power cinephile bento — full metadata, not summary */}
-          <div className="cinematic-divider" />
-          <div className="cinematic-bento">
-            <div className="bento-cell">
-              <span className="bento-label">Cast — principal</span>
-              <span className="bento-value" style={{ fontSize: 14, lineHeight: "1.45" }}>
-                {cast ?? "—"}
-              </span>
-            </div>
-            <div className="bento-cell">
-              <span className="bento-label">Genre · Master</span>
-              <span className="bento-value">{genre ? `${genre} · 4K HDR` : "—"}</span>
-            </div>
-            <div className="bento-cell">
-              <span className="bento-label">Audio · Container</span>
-              <span className="bento-value">Dolby Atmos 5.1 · 48 kHz</span>
-            </div>
-            <div className="bento-cell">
-              <span className="bento-label">Rating · Signal</span>
-              <span className="bento-value bento-value--with-icon">
-                <span aria-hidden style={{ color: "var(--primary-container)" }}>
-                  ★
-                </span>{" "}
-                {rating ?? "—"} <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--on-surface-variant)", marginLeft: 6 }}>BT.709</span>
-              </span>
-            </div>
-          </div>
+          <Bento cast={cast} genre={genre} rating={rating} />
 
-          {/* Series-only: season picker + episodes */}
           {props.kind === "series" && (
             <div className="cinematic-series">
-              {props.episodesLoading ? (
-                <p className="cinematic-note">Loading episodes…</p>
-              ) : seasons.length === 0 ? (
-                <p className="cinematic-note">No episodes found.</p>
-              ) : (
-                <>
-                  {seasons.length > 1 && (
-                    <div className="season-picker">
-                      {seasons.map((s) => (
-                        <button
-                          key={s.number}
-                          className={`season-pick ${s.number === selectedSeason?.number ? "active" : ""}`}
-                          onClick={() => setSeasonNumber(s.number)}
-                        >
-                          {s.name} <span className="season-pick-count">{s.episodes.length}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {selectedSeason && (
-                    <div className="season-block">
-                      <div className="season-title">
-                        {selectedSeason.name} · {selectedSeason.episodes.length} episodes
-                      </div>
-                      <ChannelList
-                        channels={selectedSeason.episodes}
-                        activeId={null}
-                        favoriteIds={favoriteIds}
-                        onSelect={onWatch}
-                        onToggleFavorite={onToggleFavorite}
-                        showFavorite={false}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
+              <SeasonSection
+                seasons={props.seasons}
+                episodesLoading={props.episodesLoading}
+                onWatch={onWatch}
+                favoriteIds={favoriteIds}
+                onToggleFavorite={onToggleFavorite}
+              />
             </div>
           )}
         </div>

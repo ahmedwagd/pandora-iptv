@@ -1,8 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* ============================================================
-   SIGNAL — Premium IPTV Design System
-   Surface: layered green-black · Primary #2EE6A8 phosphor
-   SMPTE strip is the single signature. Tonal layering, no shadow.
-   ============================================================ */
+    SIGNAL — Premium IPTV Design System
+    Surface: layered green-black · Primary #2EE6A8 phosphor
+    SMPTE strip is the single signature. Tonal layering, no shadow.
+    Keep CSS variables for legacy App.css compatibility;
+    new code should prefer Tailwind utilities.
+    ============================================================ */
 :root {
   /* — Surfaces (tonal layering over canvas) — */
   --surface: #0d1511;

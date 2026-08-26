@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { open } from "@tauri-apps/plugin-dialog";
 import { readTextFile } from "@tauri-apps/plugin-fs";
@@ -10,22 +10,8 @@ import {
   getXtreamSeasons,
   getXtreamSeries,
 } from "../lib/xtream";
+import { toErrorString } from "../lib/errors";
 import type { Channel, MovieDetail, Season, Series, XtreamCreds } from "../types";
-
-// tauriFetch can reject with non-Error values (plain strings/objects), so
-// normalize whatever we get into something readable for the error banner.
-function toErrorString(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === "string") return e;
-  if (e && typeof e === "object" && "message" in e) {
-    return String((e as { message: unknown }).message);
-  }
-  try {
-    return JSON.stringify(e) || "Failed to load playlist.";
-  } catch {
-    return "Failed to load playlist.";
-  }
-}
 
 export function usePlaylist() {
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -45,6 +31,19 @@ export function usePlaylist() {
   const [sourceKind, setSourceKind] = useState<"m3u" | "xtream" | null>(null);
 
   const credsRef = useRef<XtreamCreds | null>(null);
+  const vodAbortRef = useRef<AbortController | null>(null);
+  const seriesAbortRef = useRef<AbortController | null>(null);
+  const episodesAbortRef = useRef<AbortController | null>(null);
+  const detailAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      vodAbortRef.current?.abort();
+      seriesAbortRef.current?.abort();
+      episodesAbortRef.current?.abort();
+      detailAbortRef.current?.abort();
+    };
+  }, []);
 
   const resetContent = useCallback(() => {
     setMovies([]);
@@ -53,15 +52,24 @@ export function usePlaylist() {
     setSeasons([]);
   }, []);
 
+  const abortBackground = useCallback(() => {
+    vodAbortRef.current?.abort();
+    seriesAbortRef.current?.abort();
+    episodesAbortRef.current?.abort();
+    detailAbortRef.current?.abort();
+    vodAbortRef.current = null;
+    seriesAbortRef.current = null;
+    episodesAbortRef.current = null;
+    detailAbortRef.current = null;
+  }, []);
+
   const loadFromUrl = useCallback(
     async (url: string, label?: string) => {
+      abortBackground();
       setLoading(true);
       setError(null);
       resetContent();
       try {
-        // Use the Tauri HTTP plugin rather than window.fetch: it runs
-        // outside the webview's CORS restrictions, which most public
-        // IPTV playlist hosts don't set headers for.
         const res = await tauriFetch(url, { method: "GET" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
@@ -71,12 +79,13 @@ export function usePlaylist() {
         setSourceLabel(label ?? url);
         setSourceKind("m3u");
       } catch (e) {
+        if ((e as DOMException)?.name === "AbortError") return;
         setError(toErrorString(e));
       } finally {
         setLoading(false);
       }
     },
-    [resetContent]
+    [resetContent, abortBackground]
   );
 
   const loadFromFile = useCallback(async () => {
@@ -87,6 +96,7 @@ export function usePlaylist() {
     });
     if (!path || typeof path !== "string") return;
 
+    abortBackground();
     setLoading(true);
     resetContent();
     try {
@@ -101,10 +111,11 @@ export function usePlaylist() {
     } finally {
       setLoading(false);
     }
-  }, [resetContent]);
+  }, [resetContent, abortBackground]);
 
   const loadFromXtream = useCallback(
     async (creds: XtreamCreds) => {
+      abortBackground();
       setLoading(true);
       setError(null);
       resetContent();
@@ -120,20 +131,39 @@ export function usePlaylist() {
         setLoading(false);
       }
 
-      // Movies + series load in the background after live channels are ready.
-      // Failures here are non-fatal: the account may simply have no VOD/series.
+      // Background loads with abortable signals
+      const vodCtrl = new AbortController();
+      const seriesCtrl = new AbortController();
+      vodAbortRef.current = vodCtrl;
+      seriesAbortRef.current = seriesCtrl;
+
       setMoviesLoading(true);
       setSeriesLoading(true);
-      getXtreamMovies(creds, tauriFetch)
-        .then(setMovies)
-        .catch((e) => console.warn("Failed to load movies:", toErrorString(e)))
-        .finally(() => setMoviesLoading(false));
-      getXtreamSeries(creds, tauriFetch)
-        .then(setSeries)
-        .catch((e) => console.warn("Failed to load series:", toErrorString(e)))
-        .finally(() => setSeriesLoading(false));
+      getXtreamMovies(creds, tauriFetch, { signal: vodCtrl.signal })
+        .then((data) => {
+          if (!vodCtrl.signal.aborted) setMovies(data);
+        })
+        .catch((e) => {
+          if ((e as DOMException)?.name === "AbortError") return;
+          console.warn("Failed to load movies:", toErrorString(e));
+        })
+        .finally(() => {
+          if (!vodCtrl.signal.aborted) setMoviesLoading(false);
+        });
+
+      getXtreamSeries(creds, tauriFetch, { signal: seriesCtrl.signal })
+        .then((data) => {
+          if (!seriesCtrl.signal.aborted) setSeries(data);
+        })
+        .catch((e) => {
+          if ((e as DOMException)?.name === "AbortError") return;
+          console.warn("Failed to load series:", toErrorString(e));
+        })
+        .finally(() => {
+          if (!seriesCtrl.signal.aborted) setSeriesLoading(false);
+        });
     },
-    [resetContent]
+    [resetContent, abortBackground]
   );
 
   const openSeries = useCallback(async (s: Series) => {
@@ -142,17 +172,24 @@ export function usePlaylist() {
     const creds = credsRef.current;
     if (!creds) return;
 
+    episodesAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    episodesAbortRef.current = ctrl;
+
     setEpisodesLoading(true);
     try {
-      setSeasons(await getXtreamSeasons(creds, tauriFetch, s.id));
+      const data = await getXtreamSeasons(creds, tauriFetch, s.id, { signal: ctrl.signal });
+      if (!ctrl.signal.aborted) setSeasons(data);
     } catch (e) {
+      if ((e as DOMException)?.name === "AbortError") return;
       setError(toErrorString(e));
     } finally {
-      setEpisodesLoading(false);
+      if (!ctrl.signal.aborted) setEpisodesLoading(false);
     }
   }, []);
 
   const closeSeries = useCallback(() => {
+    episodesAbortRef.current?.abort();
     setActiveSeries(null);
     setSeasons([]);
   }, []);
@@ -160,25 +197,32 @@ export function usePlaylist() {
   const loadMovieDetail = useCallback(async (streamId: string) => {
     const creds = credsRef.current;
     if (!creds) return;
+    detailAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    detailAbortRef.current = ctrl;
+
     setMovieDetailLoading(true);
     setMovieDetail(null);
     try {
-      setMovieDetail(await getXtreamMovieDetail(creds, tauriFetch, streamId));
+      const detail = await getXtreamMovieDetail(creds, tauriFetch, streamId, { signal: ctrl.signal });
+      if (!ctrl.signal.aborted) setMovieDetail(detail);
     } catch (e) {
+      if ((e as DOMException)?.name === "AbortError") return;
       console.warn("Failed to load movie details:", toErrorString(e));
     } finally {
-      setMovieDetailLoading(false);
+      if (!ctrl.signal.aborted) setMovieDetailLoading(false);
     }
   }, []);
 
   const disconnect = useCallback(() => {
+    abortBackground();
     setChannels([]);
     resetContent();
     setError(null);
     setSourceLabel(null);
     setSourceKind(null);
     credsRef.current = null;
-  }, [resetContent]);
+  }, [resetContent, abortBackground]);
 
   return {
     channels,

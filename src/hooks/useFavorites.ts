@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { load, Store } from "@tauri-apps/plugin-store";
-
-const STORE_FILE = "iptv-app-data.json";
-const FAVORITES_KEY = "favoriteIds";
-
-let storePromise: Promise<Store> | null = null;
-function getStore() {
-  if (!storePromise) storePromise = load(STORE_FILE, { autoSave: true });
-  return storePromise;
-}
+import { getValue, setValue } from "../lib/store";
+import { StorageKeys } from "../lib/storageKeys";
 
 /**
  * Persists favorite ids to disk via Tauri's store plugin.
@@ -20,8 +12,7 @@ export function useFavorites() {
 
   useEffect(() => {
     (async () => {
-      const store = await getStore();
-      const saved = (await store.get<string[]>(FAVORITES_KEY)) ?? [];
+      const saved = (await getValue<string[]>(StorageKeys.favoriteIds)) ?? [];
       setFavoriteIds(new Set(saved));
     })();
   }, []);
@@ -32,9 +23,7 @@ export function useFavorites() {
       if (next.has(id)) next.delete(id);
       else next.add(id);
 
-      getStore().then((store) => {
-        store.set(FAVORITES_KEY, Array.from(next));
-      });
+      setValue(StorageKeys.favoriteIds, Array.from(next));
 
       return next;
     });

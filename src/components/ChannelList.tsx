@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import type { Channel } from "../types";
-import { ColorBar } from "./ColorBar";
 import { MediaImage } from "./MediaImage";
+import { EmptyState } from "./shared/EmptyState";
 
 interface ChannelListProps {
   channels: Channel[];
@@ -12,6 +12,68 @@ interface ChannelListProps {
   showFavorite?: boolean;
   loading?: boolean;
 }
+
+const ChannelRow = memo(function ChannelRow({
+  ch,
+  idx,
+  activeId,
+  favoriteIds,
+  onSelect,
+  onToggleFavorite,
+  showFavorite,
+}: {
+  ch: Channel;
+  idx: number;
+  activeId: string | null;
+  favoriteIds: Set<string>;
+  onSelect: (c: Channel) => void;
+  onToggleFavorite: (id: string) => void;
+  showFavorite: boolean;
+}) {
+  const isActive = ch.id === activeId;
+  const isFav = favoriteIds.has(ch.id);
+  return (
+    <li
+      className={`channel-row ${isActive ? "active" : ""}`}
+      onClick={() => onSelect(ch)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect(ch);
+        }
+      }}
+      tabIndex={0}
+      role="option"
+      aria-selected={isActive}
+    >
+      <span className="channel-num" aria-hidden>
+        {String(idx + 1).padStart(2, "0")}
+      </span>
+      <MediaImage
+        src={ch.logo}
+        alt={ch.name}
+        className="channel-logo"
+        placeholderClassName="channel-logo-placeholder"
+        fallback={ch.name[0] ?? "?"}
+      />
+      <span className="channel-name">{ch.name}</span>
+      {showFavorite && (
+        <button
+          type="button"
+          className={`favorite-btn ${isFav ? "is-favorite" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite(ch.id);
+          }}
+          aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+          aria-pressed={isFav}
+        >
+          ★
+        </button>
+      )}
+    </li>
+  );
+});
 
 export function ChannelList({
   channels,
@@ -83,41 +145,21 @@ export function ChannelList({
         </div>
       ) : filtered.length === 0 ? (
         <div className="channel-list-empty">
-          <ColorBar className="colorbar--dim" />
-          <span>No channels match your search.</span>
+          <EmptyState message="No channels match your search." />
         </div>
       ) : (
-        <ul className="channel-list">
+        <ul className="channel-list" role="listbox" aria-label="Channels">
           {filtered.map((ch, idx) => (
-            <li
+            <ChannelRow
               key={ch.id}
-              className={`channel-row ${ch.id === activeId ? "active" : ""}`}
-              onClick={() => onSelect(ch)}
-            >
-              <span className="channel-num" aria-hidden>
-                {String(idx + 1).padStart(2, "0")}
-              </span>
-              <MediaImage
-                src={ch.logo}
-                alt=""
-                className="channel-logo"
-                placeholderClassName="channel-logo-placeholder"
-                fallback={ch.name[0] ?? "?"}
-              />
-              <span className="channel-name">{ch.name}</span>
-              {showFavorite && (
-                <button
-                  className={`favorite-btn ${favoriteIds.has(ch.id) ? "is-favorite" : ""}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite(ch.id);
-                  }}
-                  aria-label="Toggle favorite"
-                >
-                  ★
-                </button>
-              )}
-            </li>
+              ch={ch}
+              idx={idx}
+              activeId={activeId}
+              favoriteIds={favoriteIds}
+              onSelect={onSelect}
+              onToggleFavorite={onToggleFavorite}
+              showFavorite={showFavorite}
+            />
           ))}
         </ul>
       )}

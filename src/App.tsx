@@ -1,23 +1,20 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Player } from "./components/Player";
 import { LoginPage } from "./components/LoginPage";
 import { Home } from "./components/Home";
-import { FilterSidebar, type SmartFilter } from "./components/FilterSidebar";
-import { PosterGrid, type PosterCard } from "./components/PosterGrid";
+import { FilterSidebar } from "./components/FilterSidebar";
+import { PosterGrid } from "./components/PosterGrid";
 import { DetailPage } from "./components/DetailPage";
 import { WatchView } from "./components/WatchView";
 import { usePlaylist } from "./hooks/usePlaylist";
 import { useFavorites } from "./hooks/useFavorites";
 import { useXtreamCreds } from "./hooks/useXtreamCreds";
 import { useWatchHistory } from "./hooks/useWatchHistory";
-import type { Channel, ContentMode, Series, XtreamCreds } from "./types";
+import { useAppStore } from "./stores/appStore";
+import { selectCategories, selectPosterCards } from "./app/selectors/browseSelectors";
+import type { Channel, Series, XtreamCreds } from "./types";
 import "./App.css";
-
-type Screen = "home" | "browse" | "detail" | "watch";
-type DetailTarget =
-  | { kind: "movie"; channel: Channel }
-  | { kind: "series"; series: Series };
 
 export default function App() {
   const {
@@ -46,13 +43,22 @@ export default function App() {
   const { creds: xtreamCreds, save: saveXtreamCreds, clear: clearXtreamCreds } = useXtreamCreds();
   const { history, record } = useWatchHistory();
 
-  const [active, setActive] = useState<Channel | null>(null);
-  const [contentMode, setContentMode] = useState<ContentMode>("live");
-  const [screen, setScreen] = useState<Screen>("home");
-  const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
-  const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
-  const [category, setCategory] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const {
+    active,
+    contentMode,
+    screen,
+    detailTarget,
+    smartFilter,
+    category,
+    search,
+    setActive,
+    setContentMode,
+    setScreen,
+    setDetailTarget,
+    setSmartFilter,
+    setCategory,
+    setSearch,
+  } = useAppStore();
 
   const handleLoadXtream = useCallback(
     (creds: XtreamCreds, remember: boolean) => {
@@ -62,7 +68,7 @@ export default function App() {
       setScreen("home");
       loadFromXtream(creds);
     },
-    [saveXtreamCreds, clearXtreamCreds, loadFromXtream]
+    [saveXtreamCreds, clearXtreamCreds, loadFromXtream, setContentMode, setScreen]
   );
 
   const handleLoadUrl = useCallback(
@@ -71,17 +77,17 @@ export default function App() {
       setScreen("browse");
       loadFromUrl(url);
     },
-    [loadFromUrl]
+    [loadFromUrl, setContentMode, setScreen]
   );
 
   const handleLoadFile = useCallback(() => {
     setContentMode("live");
     setScreen("browse");
     loadFromFile();
-  }, [loadFromFile]);
+  }, [loadFromFile, setContentMode, setScreen]);
 
   const enterContent = useCallback(
-    (mode: ContentMode) => {
+    (mode: typeof contentMode) => {
       setContentMode(mode);
       setSmartFilter("all");
       setCategory(null);
@@ -89,7 +95,7 @@ export default function App() {
       closeSeries();
       setScreen("browse");
     },
-    [closeSeries]
+    [closeSeries, setContentMode, setSmartFilter, setCategory, setSearch, setScreen]
   );
 
   const goHome = useCallback(() => {
@@ -97,7 +103,7 @@ export default function App() {
     setActive(null);
     setDetailTarget(null);
     closeSeries();
-  }, [closeSeries]);
+  }, [closeSeries, setActive, setDetailTarget, setScreen]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
@@ -108,7 +114,7 @@ export default function App() {
     setCategory(null);
     setSearch("");
     setScreen("home");
-  }, [disconnect]);
+  }, [disconnect, setActive, setCategory, setContentMode, setDetailTarget, setScreen, setSmartFilter, setSearch]);
 
   const watch = useCallback(
     (channel: Channel) => {
@@ -122,7 +128,7 @@ export default function App() {
       });
       setScreen("watch");
     },
-    [record]
+    [record, setActive, setScreen]
   );
 
   const openMovieDetail = useCallback(
@@ -131,66 +137,60 @@ export default function App() {
       loadMovieDetail(channel.id.replace(/^movie:/, ""));
       setScreen("detail");
     },
-    [loadMovieDetail]
+    [loadMovieDetail, setDetailTarget, setScreen]
   );
 
   const openSeriesDetail = useCallback(
-    (series: Series) => {
-      setDetailTarget({ kind: "series", series });
-      openSeries(series);
+    (s: Series) => {
+      setDetailTarget({ kind: "series", series: s });
+      openSeries(s);
       setScreen("detail");
     },
-    [openSeries]
+    [openSeries, setDetailTarget, setScreen]
   );
 
   const backToBrowse = useCallback(() => {
     setDetailTarget(null);
     setScreen("browse");
-  }, []);
+  }, [setDetailTarget, setScreen]);
 
-  const handleSmartFilter = useCallback((f: SmartFilter) => {
-    setSmartFilter(f);
-    setCategory(null);
-  }, []);
+  const handleSmartFilter = useCallback(
+    (f: typeof smartFilter) => {
+      setSmartFilter(f);
+      setCategory(null);
+    },
+    [setCategory, setSmartFilter]
+  );
 
-  const handleCategory = useCallback((c: string | null) => {
-    setCategory(c);
-    setSmartFilter("all");
-  }, []);
+  const handleCategory = useCallback(
+    (c: string | null) => {
+      setCategory(c);
+      setSmartFilter("all");
+    },
+    [setCategory, setSmartFilter]
+  );
 
-  const categories = useMemo(() => {
-    const list = contentMode === "movie" ? movies.map((m) => m.group) : series.map((s) => s.group);
-    const set = new Set<string>();
-    list.forEach((g) => set.add(g));
-    return Array.from(set);
+  const browseCategories = useMemo(() => {
+    if (contentMode === "live") return [];
+    return selectCategories(contentMode as "movie" | "series", movies, series);
   }, [contentMode, movies, series]);
 
-  const posterCards = useMemo((): PosterCard[] => {
-    const term = search.trim().toLowerCase();
-    if (contentMode === "movie") {
-      if (smartFilter === "continue") {
-        return history
-          .filter((h) => h.kind === "movie")
-          .map((h) => ({ id: h.id, name: h.name, poster: h.poster }));
-      }
-      let list = smartFilter === "favorites" ? movies.filter((m) => favoriteIds.has(m.id)) : movies;
-      if (category) list = list.filter((m) => m.group === category);
-      if (term) list = list.filter((m) => m.name.toLowerCase().includes(term));
-      return list.map((m) => ({ id: m.id, name: m.name, poster: m.logo }));
-    }
-    if (smartFilter === "continue") {
-      return history
-        .filter((h) => h.kind === "episode")
-        .map((h) => ({ id: h.id, name: h.name, poster: h.poster }));
-    }
-    let list = series;
-    if (smartFilter === "favorites") {
-      list = series.filter((s) => favoriteIds.has(`series:${s.id}`));
-    }
-    if (category) list = list.filter((s) => s.group === category);
-    if (term) list = list.filter((s) => s.name.toLowerCase().includes(term));
-    return list.map((s) => ({ id: s.id, name: s.name, poster: s.cover }));
-  }, [contentMode, smartFilter, category, search, movies, series, history, favoriteIds]);
+  const posterCards = useMemo(
+    () =>
+      contentMode === "live"
+        ? []
+        : selectPosterCards({
+            contentMode: contentMode as "movie" | "series",
+            smartFilter,
+            category,
+            search,
+            movies,
+            series,
+            history,
+            favoriteIds,
+          }),
+    [contentMode, smartFilter, category, search, movies, series, history, favoriteIds]
+  );
 
   const handleOpenPoster = useCallback(
     (id: string) => {
@@ -312,7 +312,7 @@ export default function App() {
         smartFilter={smartFilter}
         onSmartFilter={handleSmartFilter}
         showFavorites
-        categories={categories}
+        categories={browseCategories}
         category={category}
         onCategory={handleCategory}
         search={search}

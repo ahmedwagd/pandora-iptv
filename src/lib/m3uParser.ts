@@ -9,13 +9,12 @@ function hashId(input: string): string {
   return (h >>> 0).toString(36);
 }
 
-const ATTR_RE = /([a-zA-Z0-9-]+)="([^"]*)"/g;
-
 function parseAttributes(line: string): Record<string, string> {
   const attrs: Record<string, string> = {};
+  // Local regex per call avoids shared global lastIndex state (see ATTR_RE bug)
+  const re = /([a-zA-Z0-9-]+)="([^"]*)"/g;
   let match: RegExpExecArray | null;
-  ATTR_RE.lastIndex = 0;
-  while ((match = ATTR_RE.exec(line)) !== null) {
+  while ((match = re.exec(line)) !== null) {
     attrs[match[1].toLowerCase()] = match[2];
   }
   return attrs;

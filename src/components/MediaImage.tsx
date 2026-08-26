@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface MediaImageProps {
   src?: string;
@@ -23,6 +23,10 @@ export function MediaImage({
   loading = "lazy",
 }: MediaImageProps) {
   const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    setErrored(false);
+  }, [src]);
 
   if (src && !errored) {
     return (

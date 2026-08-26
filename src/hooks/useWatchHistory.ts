@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useState } from "react";
-import { load, Store } from "@tauri-apps/plugin-store";
+import { getValue, setValue } from "../lib/store";
+import { StorageKeys } from "../lib/storageKeys";
 import type { WatchItem } from "../types";
 
-const STORE_FILE = "iptv-app-data.json";
-const WATCH_KEY = "watchHistory";
 const MAX_ITEMS = 50;
 
-let storePromise: Promise<Store> | null = null;
-function getStore() {
-  if (!storePromise) storePromise = load(STORE_FILE, { autoSave: true });
-  return storePromise;
+/** Redact credentials from Xtream URLs before persisting to disk */
+function redactUrl(url: string): string {
+  try {
+    // Xtream URLs embed credentials as /live/user/pass/ or /movie/user/pass/
+    // Replace the credential segments with placeholder to avoid plaintext leak.
+    return url.replace(/\/(live|movie|series)\/[^/]+\/[^/]+\//, "/$1/***\/***/");
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -21,8 +25,7 @@ export function useWatchHistory() {
 
   useEffect(() => {
     (async () => {
-      const store = await getStore();
-      const saved = (await store.get<WatchItem[]>(WATCH_KEY)) ?? [];
+      const saved = (await getValue<WatchItem[]>(StorageKeys.watchHistory)) ?? [];
       setHistory(saved);
     })();
   }, []);
@@ -34,9 +37,10 @@ export function useWatchHistory() {
         ...prev.filter((i) => i.id !== item.id),
       ].slice(0, MAX_ITEMS);
 
-      getStore().then((store) => {
-        store.set(WATCH_KEY, next);
-      });
+      // Persist redacted copy: keep in-memory URL intact for playback,
+      // but store redacted version to avoid leaking creds on disk.
+      const redacted = next.map((i) => ({ ...i, url: redactUrl(i.url) }));
+      setValue(StorageKeys.watchHistory, redacted);
 
       return next;
     });
