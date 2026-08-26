@@ -13,7 +13,8 @@ function getStore() {
 
 /**
  * Persists Xtream Codes credentials (server/username/password) to disk
- * via Tauri's store plugin. Saved as plaintext JSON, as agreed.
+ * via Tauri's store plugin when "Remember me" is checked. `clear()`
+ * wipes both memory and disk (used for logout / un-remembered logins).
  */
 export function useXtreamCreds() {
   const [creds, setCreds] = useState<XtreamCreds | null>(null);
@@ -35,5 +36,12 @@ export function useXtreamCreds() {
     });
   }, []);
 
-  return { creds, save, ready };
+  const clear = useCallback(() => {
+    setCreds(null);
+    getStore().then((store) => {
+      store.delete(XTREAM_KEY);
+    });
+  }, []);
+
+  return { creds, save, clear, ready };
 }

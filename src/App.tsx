@@ -43,7 +43,7 @@ export default function App() {
     disconnect,
   } = usePlaylist();
   const { favoriteIds, toggle } = useFavorites();
-  const { creds: xtreamCreds, save: saveXtreamCreds } = useXtreamCreds();
+  const { creds: xtreamCreds, save: saveXtreamCreds, clear: clearXtreamCreds } = useXtreamCreds();
   const { history, record } = useWatchHistory();
 
   const [active, setActive] = useState<Channel | null>(null);
@@ -55,13 +55,14 @@ export default function App() {
   const [search, setSearch] = useState("");
 
   const handleLoadXtream = useCallback(
-    (creds: XtreamCreds) => {
-      saveXtreamCreds(creds);
+    (creds: XtreamCreds, remember: boolean) => {
+      if (remember) saveXtreamCreds(creds);
+      else clearXtreamCreds();
       setContentMode("live");
       setScreen("home");
       loadFromXtream(creds);
     },
-    [saveXtreamCreds, loadFromXtream]
+    [saveXtreamCreds, clearXtreamCreds, loadFromXtream]
   );
 
   const handleLoadUrl = useCallback(

@@ -6,7 +6,7 @@ interface LoginPageProps {
   xtreamCreds: XtreamCreds | null;
   loading: boolean;
   error: string | null;
-  onLoadXtream: (creds: XtreamCreds) => void;
+  onLoadXtream: (creds: XtreamCreds, remember: boolean) => void;
   onLoadUrl: (url: string) => void;
   onLoadFile: () => void;
 }
@@ -23,22 +23,25 @@ export function LoginPage({
   const [server, setServer] = useState(xtreamCreds?.server ?? "");
   const [username, setUsername] = useState(xtreamCreds?.username ?? "");
   const [password, setPassword] = useState(xtreamCreds?.password ?? "");
+  const [remember, setRemember] = useState(false);
   const [url, setUrl] = useState("");
 
   // Saved credentials load from disk asynchronously; backfill the form
-  // once they arrive (only when the fields are still empty).
+  // once they arrive (only when the fields are still empty) and tick
+  // "Remember me" since credentials were persisted.
   useEffect(() => {
     if (!xtreamCreds) return;
     setServer((v) => v || xtreamCreds.server || "");
     setUsername((v) => v || xtreamCreds.username || "");
     setPassword((v) => v || xtreamCreds.password || "");
+    setRemember(true);
   }, [xtreamCreds]);
 
   const canConnect = Boolean(server.trim() && username.trim() && password.trim() && !loading);
   const canLoadUrl = Boolean(url.trim() && !loading);
 
   const submitXtream = () => {
-    if (canConnect) onLoadXtream({ server, username, password });
+    if (canConnect) onLoadXtream({ server, username, password }, remember);
   };
 
     return (
@@ -47,9 +50,9 @@ export function LoginPage({
         <ColorBar className="colorbar--brand" />
         <p className="login-eyebrow">Broadcast · Signal · Player</p>
         <h1 className="login-wordmark">
-          IPTV
+          Pandora
           <br />
-          Player
+          IPTV
         </h1>
         <p className="login-tagline">
           Television from your provider. <strong>Live, movies, series</strong> — one
@@ -114,6 +117,14 @@ export function LoginPage({
                   }}
                 />
               </div>
+              <label className="login-remember">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                />
+                Remember me on this device
+              </label>
               <button className="login-connect" disabled={!canConnect} onClick={submitXtream}>
                 {loading ? "Connecting…" : "Connect"}
               </button>

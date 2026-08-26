@@ -24,7 +24,7 @@ export function Sidebar({
     <div className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-brand-block">
-          <span className="sidebar-brand">IPTV Player</span>
+          <span className="sidebar-brand">PandoraIPTV</span>
           <span className="sidebar-signal">
             <span className="signal-dot" aria-hidden>
               ●

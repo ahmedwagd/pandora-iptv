@@ -100,6 +100,21 @@
 .login-form input:hover { border-color: var(--outline); }
 .login-form input:focus { outline: none; border-color: var(--signal); box-shadow: 0 0 0 3px var(--signal-glow); }
 
+/* — Remember me row — */
+.login-remember {
+  display: flex !important; flex-direction: row !important; align-items: center; gap: 9px;
+  font-family: var(--font-body) !important; font-size: 13px !important;
+  letter-spacing: normal !important; text-transform: none !important;
+  color: var(--on-surface-variant) !important; margin-bottom: 0 !important;
+  cursor: pointer; user-select: none; width: fit-content;
+}
+.login-remember input {
+  width: 16px !important; padding: 0 !important; margin: 0; border: none !important;
+  background: none !important; box-shadow: none !important;
+  accent-color: var(--signal); height: 16px; cursor: pointer;
+}
+.login-remember:hover { color: var(--on-surface); }
+
 /* — Primary button: solid #2EE6A8, #0d1511 text, Space Grotesk Bold — */
 .login-connect {
   margin-top: 6px; padding: 13px 16px; border-radius: 0.625rem;

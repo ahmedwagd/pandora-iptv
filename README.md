@@ -1,4 +1,4 @@
-# IPTV Player (Tauri + TypeScript)
+# PandoraIPTV (Tauri + TypeScript)
 
 A lightweight desktop IPTV player. Load an M3U/M3U8 playlist (URL or local
 file), browse channels by group, search, favorite, and play HLS streams.
