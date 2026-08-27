@@ -120,6 +120,35 @@ const Bento = memo(function Bento({
   );
 });
 
+const EPISODE_SKELETON_COUNT = 5;
+
+function EpisodeListSkeleton() {
+  return (
+    <ul className="channel-list" aria-busy="true" aria-live="polite" aria-label="Loading episodes">
+      {Array.from({ length: EPISODE_SKELETON_COUNT }).map((_, i) => (
+        <li key={i} className="channel-row skeleton" aria-hidden>
+          <span className="channel-num" />
+          <span className="channel-logo skeleton-logo" />
+          <div className="ch-main">
+            <span className="skeleton-line" style={{ width: "62%" }} />
+            <span className="skeleton-line" style={{ width: "42%" , height: 8 }} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function PlotSkeleton() {
+  return (
+    <div className="cinematic-skeleton" aria-busy="true" aria-live="polite" aria-label="Loading description">
+      <span className="skeleton-line" style={{ width: "92%" }} />
+      <span className="skeleton-line" style={{ width: "88%" }} />
+      <span className="skeleton-line" style={{ width: "65%" }} />
+    </div>
+  );
+}
+
 const SeasonSection = memo(function SeasonSection({
   seasons,
   episodesLoading,
@@ -141,7 +170,16 @@ const SeasonSection = memo(function SeasonSection({
     return seasons.find((s) => s.number === seasonNumber) ?? seasons[0];
   }, [seasons, seasonNumber]);
 
-  if (episodesLoading) return <p className="cinematic-note">Loading episodes…</p>;
+  if (episodesLoading) {
+    return (
+      <div>
+        <p className="cinematic-note" role="status">
+          <span className="inline-loader" style={{ width: 12, height: 12, borderWidth: 1.5 }} aria-hidden /> Loading episodes…
+        </p>
+        <EpisodeListSkeleton />
+      </div>
+    );
+  }
   if (seasons.length === 0) return <p className="cinematic-note">No episodes found.</p>;
 
   return (
@@ -366,21 +404,23 @@ export function DetailPage(props: DetailProps) {
               </div>
 
               {props.kind === "movie" && props.detailLoading && (
-                <p className="cinematic-note">
-                  <span className="inline-loader" aria-hidden />
-                  Loading details…
-                </p>
+                <div aria-busy="true" aria-live="polite">
+                  <p className="cinematic-note" role="status">
+                    <span className="inline-loader" style={{ width: 12, height: 12, borderWidth: 1.5 }} aria-hidden /> Loading details…
+                  </p>
+                  <PlotSkeleton />
+                </div>
               )}
 
-              {plot ? (
+              {props.kind === "movie" && !props.detailLoading && plot ? (
                 <p className="cinematic-plot">{plot}</p>
-              ) : (
-                !isLoading && (
-                  <p className="cinematic-plot cinematic-plot--muted">
-                    No synopsis available for this title.
-                  </p>
-                )
-              )}
+              ) : props.kind === "movie" && !props.detailLoading && !plot ? (
+                <p className="cinematic-plot cinematic-plot--muted">No synopsis available for this title.</p>
+              ) : props.kind === "series" && plot ? (
+                <p className="cinematic-plot">{plot}</p>
+              ) : props.kind === "series" && !plot && !isLoading ? (
+                <p className="cinematic-plot cinematic-plot--muted">No synopsis available for this title.</p>
+              ) : null}
 
               <div className="cinematic-actions">
                 {props.kind === "movie" ? (

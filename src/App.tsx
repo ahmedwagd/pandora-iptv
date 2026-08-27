@@ -4,7 +4,7 @@ import { Player } from "./components/Player";
 import { LoginPage } from "./components/LoginPage";
 import { Home } from "./components/Home";
 import { FilterSidebar } from "./components/FilterSidebar";
-import { PosterGrid } from "./components/PosterGrid";
+import { PosterGrid, PosterGridSkeleton } from "./components/PosterGrid";
 import { DetailPage } from "./components/DetailPage";
 import { WatchView } from "./components/WatchView";
 import { usePlaylist } from "./hooks/usePlaylist";
@@ -32,6 +32,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { selectCategories, selectPosterCards, type SortKey } from "./app/selectors/browseSelectors";
 import { useUpdater } from "./hooks/useUpdater";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { ColorBar } from "./components/ColorBar";
 import type { Channel, Series, XtreamCreds } from "./types";
 import "./App.css";
 
@@ -105,6 +106,7 @@ export default function App() {
   const [pinAsk, setPinAsk] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState("");
   const updater = useUpdater({ notify: true, autoCheck: true });
+  const isAnyLoading = loading || moviesLoading || seriesLoading || movieDetailLoading || episodesLoading;
   const [settingsInitialGroup, setSettingsInitialGroup] = useState<"profiles" | "account" | "appearance" | "epg" | "playback" | "video" | "parental" | "updates" | undefined>(undefined);
   const handleViewUpdate = useCallback(() => {
     setSettingsInitialGroup("updates");
@@ -132,8 +134,12 @@ export default function App() {
 
   const { enabled: epgPref } = useEpgEnabled();
   const epgEnabled = epgPref && sourceKind === "xtream" && contentMode === "live";
-  const { getForChannel: getEpgForChannel, fetchShort: fetchEpgShort, refresh: refreshEpg } =
-    useEpg(xtreamCreds, epgEnabled);
+  const {
+    getForChannel: getEpgForChannel,
+    fetchShort: fetchEpgShort,
+    refresh: refreshEpg,
+    loading: epgLoading,
+  } = useEpg(xtreamCreds, epgEnabled);
   const activeEpg = active ? getEpgForChannel(active.id) : undefined;
   const { recent: recentSearches, push: pushRecent, clear: clearRecent } = useRecentSearches(activeId);
   const searchIndex = useMemo(() => buildSearchIndex({ channels, movies, series }), [channels, movies, series]);
@@ -419,15 +425,20 @@ export default function App() {
 
   const [showClearPrompt, setShowClearPrompt] = useState(false);
   const handleClearWatched = useCallback(() => {
-    // clear only current contentMode kind
     const ids = history
       .filter((h) => (contentMode === "movie" ? h.kind === "movie" : h.kind === "episode"))
       .map((h) => h.id);
     ids.forEach((id) => clearPosition(id));
-    // batch remove via clear then re-add non-matching is simpler: filter and set
-    // use removeHistory per id
     ids.forEach((id) => removeHistory(id));
   }, [history, contentMode, removeHistory, clearPosition]);
+
+  const handleRetry = useCallback(() => {
+    if (xtreamCreds) {
+      loadFromXtream(xtreamCreds);
+    } else if (sourceLabel) {
+      loadFromUrl(sourceLabel);
+    }
+  }, [xtreamCreds, sourceLabel, loadFromXtream, loadFromUrl]);
 
   const handleOpenPoster = useCallback(
     (id: string) => {
@@ -687,11 +698,26 @@ export default function App() {
           loading={loading}
           onHome={goHome}
           getEpgForChannel={getEpgForChannel}
+          epgLoading={epgLoading}
         />
         <main className="main">
+          {isAnyLoading && <ColorBar className="colorbar--loading" />}
           <UpdateBanner updater={updater} onView={handleViewUpdate} />
           {!online && <div className="banner banner-error">Offline — check your connection.</div>}
-          {error && <div className="banner banner-error">{error}</div>}
+          {error && (
+            <div className="banner banner-error" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 180 }}>{error}</span>
+              <button type="button" className="set-opt" style={{ padding: "4px 10px", fontSize: 11 }} onClick={handleRetry} disabled={loading} aria-busy={loading}>
+                {loading ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span className="inline-loader" style={{ width: 10, height: 10, borderWidth: 1.5 }} aria-hidden /> Retrying…
+                  </span>
+                ) : (
+                  "Retry"
+                )}
+              </button>
+            </div>
+          )}
           {sourceLabel && !error && (
             <div className="banner banner-info">
               Loaded: {sourceLabel} · {channels.length} channels
@@ -719,7 +745,22 @@ export default function App() {
         onHome={goHome}
       />
       <main className="browse-main">
+        {isAnyLoading && <ColorBar className="colorbar--loading" />}
         <UpdateBanner updater={updater} onView={handleViewUpdate} />
+        {error && (
+          <div className="banner banner-error" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ flex: 1, minWidth: 180 }}>{error}</span>
+            <button type="button" className="set-opt" style={{ padding: "4px 10px", fontSize: 11 }} onClick={handleRetry} disabled={loading} aria-busy={loading}>
+              {loading ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <span className="inline-loader" style={{ width: 10, height: 10, borderWidth: 1.5 }} aria-hidden /> Retrying…
+                </span>
+              ) : (
+                "Retry"
+              )}
+            </button>
+          </div>
+        )}
         {!online && <div className="banner banner-error">Offline — check your connection.</div>}
         <header className="browse-header">
           <h1 className="browse-title">{contentMode === "movie" ? "Movies" : "Series"}</h1>
@@ -836,21 +877,38 @@ export default function App() {
           </div>
         )}
         <ErrorBoundary>
-          <PosterGrid
-            items={posterCards}
-            onOpen={handleOpenPoster}
-            onRemove={handleRemoveWatched}
-            showRemove={smartFilter === "continue"}
-            favoriteIds={favoriteIds}
-            onToggleFavorite={handleTogglePosterFavorite}
-            emptyText={
-              smartFilter === "favorites"
-                ? "No favorites yet — tap ★ to keep it here."
-                : smartFilter === "continue"
-                  ? "Nothing watched yet — open something and it will show up here."
-                  : "Nothing here yet."
+          {(() => {
+            const isGridLoading = contentMode === "movie" ? moviesLoading : seriesLoading;
+            const showSkeleton = isGridLoading && posterCards.length === 0;
+            if (showSkeleton) {
+              return (
+                <div aria-busy="true" aria-live="polite">
+                  <PosterGridSkeleton count={12} />
+                  <div style={{ display: "flex", justifyContent: "center", padding: "12px 16px", gap: 8, alignItems: "center", fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--on-surface-variant)" }}>
+                    <span className="inline-loader" aria-hidden />
+                    {contentMode === "movie" ? "Loading titles…" : "Loading shows…"}
+                  </div>
+                </div>
+              );
             }
-          />
+            return (
+              <PosterGrid
+                items={posterCards}
+                onOpen={handleOpenPoster}
+                onRemove={handleRemoveWatched}
+                showRemove={smartFilter === "continue"}
+                favoriteIds={favoriteIds}
+                onToggleFavorite={handleTogglePosterFavorite}
+                emptyText={
+                  smartFilter === "favorites"
+                    ? "No favorites yet — tap ★ to keep it here."
+                    : smartFilter === "continue"
+                      ? "Nothing watched yet — open something and it will show up here."
+                      : "Nothing here yet."
+                }
+              />
+            );
+          })()}
         </ErrorBoundary>
       </main>
     </div>

@@ -1029,19 +1029,19 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         />
       )}
       {status === "loading" && (
-        <div className="player-overlay">
+        <div className="player-overlay player-overlay--loading" role="status" aria-live="polite">
           <span className="inline-loader" aria-hidden />
           Tuning {channel.name}…{sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}
       {status === "buffering" && (
-        <div className="player-overlay">
+        <div className="player-overlay player-overlay--buffering" role="status" aria-live="polite">
           <span className="inline-loader" aria-hidden />
           Buffering…{sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}
       {status === "reconnecting" && (
-        <div className="player-overlay">
+        <div className="player-overlay player-overlay--reconnecting" role="status" aria-live="polite">
           <span className="inline-loader" aria-hidden />
           {error ? error : `Reconnecting… (${sourceMeta.attempt}/${MAX_RETRIES})`}
           {sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}

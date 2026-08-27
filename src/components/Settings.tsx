@@ -87,6 +87,7 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
   const fallback = useUpdater({ notify: false, autoCheck: false });
   const updater = updaterProp ?? fallback;
   const [expanded, setExpanded] = useState(false);
+  const isCheckingVisible = updater.checking;
 
   const body = updater.info?.body ?? "";
   const truncated = body.length > 200 && !expanded;
@@ -185,7 +186,14 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
           )}
         </>
       ) : (
-        <p className="set-hint">{updater.checking ? s.checking : updater.error ? `${s.updateError}: ${updater.error}` : s.upToDate}</p>
+        <p className="set-hint" role="status" aria-live="polite">
+          {isCheckingVisible ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className="inline-loader" style={{ width: 12, height: 12, borderWidth: 1.5 }} aria-hidden />
+              {s.checking}
+            </span>
+          ) : updater.error ? `${s.updateError}: ${updater.error}` : s.upToDate}
+        </p>
       )}
 
       {updater.error && !updater.info?.available && (
@@ -199,8 +207,22 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" className="set-opt" onClick={() => updater.check()} disabled={updater.checking || updater.downloading}>
-          {updater.checking ? s.checking : s.checkForUpdates}
+        <button
+          type="button"
+          className={`set-opt ${isCheckingVisible ? "btn--loading" : ""}`}
+          onClick={() => updater.check()}
+          disabled={updater.checking || updater.downloading}
+          aria-busy={updater.checking}
+          aria-live="polite"
+        >
+          {isCheckingVisible ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <span className="inline-loader" style={{ width: 12, height: 12, borderWidth: 1.5, borderTopColor: "var(--signal)" }} aria-hidden />
+              {s.checking}
+            </span>
+          ) : (
+            s.checkForUpdates
+          )}
         </button>
         {updater.info?.available && updater.isDismissed && (
           <button type="button" className="set-opt" onClick={() => updater.clearDismiss()}>{s.clearDismiss}</button>

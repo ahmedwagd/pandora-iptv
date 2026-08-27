@@ -161,24 +161,37 @@ export function Home(props: HomeProps) {
       </header>
 
       <div className="home-grid">
-        {TILES.map((t, idx) => (
-          <button
-            key={t.mode}
-            className="home-tile"
-            style={{ "--tile-bg": t.bg, "--tile-accent": t.accent } as React.CSSProperties}
-            data-ch={`CH 0${idx + 1}`}
-            data-num={`0${idx + 1}`}
-            onClick={() => onSelect(t.mode)}
-            aria-label={`${s[t.labelKey]} — ${countText(t.count(props), t.loading(props))} ${s[t.unitKey]}`}
-          >
-            <div className="home-tile-icon">{t.icon}</div>
-            <div className="home-tile-label">{s[t.labelKey]}</div>
-            <div className="home-tile-count">
-              {countText(t.count(props), t.loading(props))} {s[t.unitKey]}
-            </div>
-            <ColorBar className="home-tile-bar" />
-          </button>
-        ))}
+        {TILES.map((t, idx) => {
+          const isTileLoading = t.loading(props);
+          return (
+            <button
+              key={t.mode}
+              className={`home-tile ${isTileLoading ? "home-tile--loading" : ""}`}
+              style={{ "--tile-bg": t.bg, "--tile-accent": t.accent } as React.CSSProperties}
+              data-ch={`CH 0${idx + 1}`}
+              data-num={`0${idx + 1}`}
+              onClick={() => onSelect(t.mode)}
+              aria-label={`${s[t.labelKey]} — ${countText(t.count(props), isTileLoading)} ${s[t.unitKey]}`}
+              aria-busy={isTileLoading}
+            >
+              <div className="home-tile-icon">{t.icon}</div>
+              <div className="home-tile-label">{s[t.labelKey]}</div>
+              <div className="home-tile-count">
+                {isTileLoading ? (
+                  <>
+                    <span className="inline-loader" style={{ width: 10, height: 10, borderWidth: 1.5 }} aria-hidden />
+                    <span>…</span> {s[t.unitKey]}
+                  </>
+                ) : (
+                  <>
+                    {t.count(props).toLocaleString()} {s[t.unitKey]}
+                  </>
+                )}
+              </div>
+              <ColorBar className="home-tile-bar" />
+            </button>
+          );
+        })}
       </div>
 
       {(profileName || username || expDateFormatted) && (

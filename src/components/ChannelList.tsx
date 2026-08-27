@@ -1,10 +1,11 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useEpgReminders } from "../hooks/useEpgReminders";
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
-import { MediaImage } from "./MediaImage";
 import { EmptyState } from "./shared/EmptyState";
 import { usePlaybackResume } from "../hooks/usePlaybackResume";
+import { ChannelRow, isResumableForList } from "./ChannelRow";
+import { VIRTUAL_THRESHOLD, VirtualChannelList } from "./VirtualChannelList";
 
 interface ChannelListProps {
   channels: Channel[];
@@ -19,162 +20,23 @@ interface ChannelListProps {
   onEpgReminder?: (ch: Channel, prog: EpgProgramme) => void;
   /** Live-only: start from a categories list and drill into channels per category. */
   categoriesFirst?: boolean;
+  epgLoading?: boolean;
 }
 
-function fmtResumeRow(sec: number): string {
-  if (!Number.isFinite(sec) || sec < 0) return "00:00";
-  const m = Math.floor(sec / 60);
-  const s = Math.floor(sec % 60);
-  const h = Math.floor(m / 60);
-  if (h > 0)
-    return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-function isResumableRow(pos: number, dur: number): boolean {
-  if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
-  if (pos < 10) return false;
-  if (dur - pos < 15) return false;
-  const pct = pos / dur;
-  return pct > 0.01 && pct < 0.985;
-}
-function fmtClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-function progRange(p: EpgProgramme): string {
-  return `${fmtClock(p.startTime)}–${fmtClock(p.stopTime)}`;
-}
-function progPct(p: EpgProgramme, nowMs: number): number {
-  const span = p.stopTime - p.startTime;
-  if (!Number.isFinite(span) || span <= 0) return 0;
-  return Math.max(0, Math.min(1, (nowMs - p.startTime) / span));
-}
-const ChannelRow = memo(function ChannelRow({
-  ch,
-  idx,
-  activeId,
-  favoriteIds,
-  onSelect,
-  onToggleFavorite,
-  showFavorite,
-  getEpgForChannel,
-  profileId,
-  hasReminder,
-  onToggleReminder,
-  now,
-}: {
-  ch: Channel;
-  idx: number;
-  activeId: string | null;
-  favoriteIds: Set<string>;
-  onSelect: (c: Channel) => void;
-  onToggleFavorite: (id: string) => void;
-  showFavorite: boolean;
-  getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
-  profileId?: string | null;
-  hasReminder?: (id: string, start: number) => boolean;
-  onToggleReminder?: (ch: Channel, prog: EpgProgramme) => void;
-  now: number;
-}) {
-  const isActive = ch.id === activeId;
-  const isFav = favoriteIds.has(ch.id);
-  const epg = getEpgForChannel?.(ch.id);
-  const { getPosition } = usePlaybackResume(profileId ?? null);
-  const saved = getPosition(ch.id);
-  const resumable = saved && isResumableRow(saved.position, saved.duration);
-  void hasReminder;
-  void onToggleReminder;
+const CHANNEL_SKELETON_COUNT = 8;
 
+function ChannelRowSkeleton() {
   return (
-    <li
-      className={`channel-row ${isActive ? "active" : ""}`}
-      onClick={() => onSelect(ch)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(ch);
-        }
-      }}
-      tabIndex={0}
-      role="option"
-      aria-selected={isActive}
-    >
-      <span className="channel-num" aria-hidden>
-        {String(idx + 1).padStart(2, "0")}
-      </span>
-      <MediaImage
-        src={ch.logo}
-        alt={ch.name}
-        className="channel-logo"
-        placeholderClassName="channel-logo-placeholder"
-        fallback={ch.name[0] ?? "?"}
-      />
+    <li className="channel-row skeleton" aria-hidden>
+      <span className="channel-num" aria-hidden />
+      <span className="channel-logo skeleton-logo" aria-hidden />
       <div className="ch-main">
-        <div className="ch-line">
-          <span className="channel-name">{ch.name}</span>
-        </div>
-        {resumable && (
-          <span className="ch-resume">
-            ↺ Resume {fmtResumeRow(saved!.position)} / {fmtResumeRow(saved!.duration)}
-          </span>
-        )}
-        {!resumable && epg?.now && (
-          <>
-            <div className="ch-now">
-              <span className="ch-now-tag" aria-hidden>
-                <span className="ch-now-dot" />
-                NOW
-              </span>
-              <span className="ch-now-time">{progRange(epg.now)}</span>
-              <span className="ch-now-title" title={epg.now.title}>
-                {epg.now.title}
-              </span>
-            </div>
-            <div className="ch-progress" aria-hidden>
-              <span
-                className="ch-progress-fill"
-                style={{ width: `${progPct(epg.now, now) * 100}%` }}
-              />
-            </div>
-            {epg?.next && (
-              <div className="ch-next">
-                <span className="ch-next-title" title={epg.next.title}>
-                  {epg.next.title}
-                </span>
-                <span className="ch-next-time">{fmtClock(epg.next.startTime)}</span>
-              </div>
-            )}
-          </>
-        )}
-        {!resumable && !epg?.now && epg?.next && (
-          <div className="ch-next">
-            <span className="ch-next-title" title={epg.next.title}>
-              {epg.next.title}
-            </span>
-            <span className="ch-next-time">{fmtClock(epg.next.startTime)}</span>
-          </div>
-        )}
+        <span className="skeleton-line" style={{ width: "58%" }} />
+        <span className="skeleton-line" style={{ width: "38%", height: 8 }} />
       </div>
-      {showFavorite && (
-        <button
-          type="button"
-          className={`favorite-btn ${isFav ? "is-favorite" : ""}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite(ch.id);
-          }}
-          aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
-          aria-pressed={isFav}
-        >
-          ★
-        </button>
-      )}
     </li>
   );
-});
+}
 
 export function ChannelList({
   channels,
@@ -187,6 +49,7 @@ export function ChannelList({
   getEpgForChannel,
   profileId,
   categoriesFirst = false,
+  epgLoading = false,
 }: ChannelListProps) {
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("All");
@@ -224,7 +87,7 @@ export function ChannelList({
   const continueIds = useMemo(() => {
     const set = new Set<string>();
     for (const [id, pos] of Object.entries(positions)) {
-      if (pos && isResumableRow(pos.position, pos.duration)) set.add(id);
+      if (pos && isResumableForList(pos.position, pos.duration)) set.add(id);
     }
     return set;
   }, [positions]);
@@ -363,6 +226,14 @@ export function ChannelList({
                 />{" "}
                 Search programmes
               </label>
+              {epgLoading && (
+                <span
+                  className="inline-loader"
+                  style={{ width: 12, height: 12, borderWidth: 1.5 }}
+                  aria-hidden
+                  title="Loading programme guide"
+                />
+              )}
             </div>
             {!categoriesFirst && (
               <div className="filter-row filter-row--meta">
@@ -382,19 +253,33 @@ export function ChannelList({
             )}
           </div>
 
-          {loading ? (
-            <div className="channel-list-empty">
-              <div
-                className="colorbar colorbar--loading"
-                style={{ height: 2, marginBottom: 12 }}
-                aria-hidden
-              />
+          {loading && channels.length === 0 ? (
+            <ul className="channel-list" aria-busy="true" aria-live="polite" aria-label="Loading channels">
+              {Array.from({ length: CHANNEL_SKELETON_COUNT }).map((_, i) => (
+                <ChannelRowSkeleton key={i} />
+              ))}
+            </ul>
+          ) : loading ? (
+            <div className="channel-list-empty" role="status" aria-live="polite">
+              <span className="inline-loader" aria-hidden style={{ width: 14, height: 14, borderWidth: 2 }} />
               <span> Tuning signal…</span>
             </div>
           ) : filtered.length === 0 ? (
             <div className="channel-list-empty">
               <EmptyState message="No channels match your search." />
             </div>
+          ) : filtered.length > VIRTUAL_THRESHOLD ? (
+            <VirtualChannelList
+              filtered={filtered}
+              activeId={activeId}
+              favoriteIds={favoriteIds}
+              onSelect={onSelect}
+              onToggleFavorite={onToggleFavorite}
+              showFavorite={showFavorite}
+              getEpgForChannel={getEpgForChannel}
+              profileId={profileId}
+              now={now}
+            />
           ) : (
             <ul className="channel-list" role="listbox" aria-label="Channels">
               {filtered.map((ch, idx) => (

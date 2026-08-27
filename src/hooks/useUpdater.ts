@@ -43,11 +43,20 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
 
   const check = useCallback(
     async (withNotify = notifyRef.current) => {
-      if (typeof window === "undefined" || !("__TAURI__" in window)) return;
       if (checkingRef.current) return;
       checkingRef.current = true;
       setChecking(true);
       setError(null);
+      // Web preview / non-Tauri: simulate checking with visible spinner
+      if (typeof window === "undefined" || !("__TAURI__" in window)) {
+        await new Promise((r) => setTimeout(r, 900));
+        const now = Date.now();
+        setLastCheckedRef.current(now);
+        setInfo((prev) => prev ?? { available: false, currentVersion: "0.1.5" });
+        setChecking(false);
+        checkingRef.current = false;
+        return;
+      }
       try {
         const { check } = await import("@tauri-apps/plugin-updater");
         const update = await check();
@@ -61,7 +70,6 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
             body: update.body ?? undefined,
           };
           setInfo(next);
-          // Only notify if not dismissed for this version and withNotify true
           const dismissed = dismissedRef.current;
           const shouldNotify = withNotify && dismissed !== next.latestVersion;
           if (shouldNotify) {
@@ -70,13 +78,10 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
         } else if (update) {
           setInfo({ available: false, currentVersion: update.currentVersion });
         } else {
-          // update is null (no manifest?) treat as not available but keep current version if known
           setInfo((prev) => prev ?? { available: false, currentVersion: "0.0.0" });
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        // Surface but keep silent for dev where updater unconfigured
-        // Only set error if in Tauri and message not empty trivial
         if (msg && !msg.includes("unconfigured")) setError(msg);
       } finally {
         setChecking(false);
@@ -87,8 +92,20 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
   );
 
   const install = useCallback(async () => {
-    if (typeof window === "undefined" || !("__TAURI__" in window)) return;
     if (checkingRef.current || downloading) return;
+    if (typeof window === "undefined" || !("__TAURI__" in window)) {
+      setError(null);
+      setDownloading(true);
+      setProgress(0);
+      setNeedsRestart(false);
+      for (let p = 10; p <= 100; p += 10) {
+        await new Promise((r) => setTimeout(r, 90));
+        setProgress(p);
+        if (p === 100) setNeedsRestart(true);
+      }
+      setDownloading(false);
+      return;
+    }
     setError(null);
     setDownloading(true);
     setProgress(0);

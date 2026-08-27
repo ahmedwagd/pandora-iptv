@@ -170,8 +170,21 @@ export function LoginPage({
                 />
                 Remember me on this device
               </label>
-              <button className="login-connect" disabled={!canConnect} onClick={submitXtream}>
-                {loading ? "Connecting…" : "Connect"}
+              <button
+                className="login-connect"
+                disabled={!canConnect}
+                onClick={submitXtream}
+                aria-busy={loading}
+                aria-live="polite"
+              >
+                {loading ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                    <span className="inline-loader" style={{ width: 14, height: 14, borderWidth: 2 }} aria-hidden />
+                    Connecting…
+                  </span>
+                ) : (
+                  "Connect"
+                )}
               </button>
             </div>
           ) : (
@@ -194,11 +207,33 @@ export function LoginPage({
                 className="login-connect"
                 disabled={!canLoadUrl}
                 onClick={() => onLoadUrl(url.trim())}
+                aria-busy={loading}
+                aria-live="polite"
               >
-                {loading ? "Loading…" : "Load playlist"}
+                {loading ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+                    <span className="inline-loader" style={{ width: 14, height: 14, borderWidth: 2 }} aria-hidden />
+                    Loading…
+                  </span>
+                ) : (
+                  "Load playlist"
+                )}
               </button>
-              <button className="login-secondary" onClick={onLoadFile} disabled={loading}>
-                Open file…
+              <button
+                className="login-secondary"
+                onClick={onLoadFile}
+                disabled={loading}
+                aria-busy={loading}
+                style={loading ? { display: "inline-flex", alignItems: "center", gap: 8, justifyContent: "center" } : undefined}
+              >
+                {loading ? (
+                  <>
+                    <span className="inline-loader" style={{ width: 12, height: 12, borderWidth: 1.5 }} aria-hidden />
+                    Opening…
+                  </>
+                ) : (
+                  "Open file…"
+                )}
               </button>
             </div>
           )}

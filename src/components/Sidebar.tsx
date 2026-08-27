@@ -11,6 +11,7 @@ interface SidebarProps {
   loading: boolean;
   onHome: () => void;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
+  epgLoading?: boolean;
 }
 
 export function Sidebar({
@@ -22,6 +23,7 @@ export function Sidebar({
   loading,
   onHome,
   getEpgForChannel,
+  epgLoading = false,
 }: SidebarProps) {
   return (
     <div className="sidebar">
@@ -50,6 +52,7 @@ export function Sidebar({
         onToggleFavorite={onToggleFavorite}
         loading={loading}
         getEpgForChannel={getEpgForChannel}
+        epgLoading={epgLoading}
         categoriesFirst
       />
     </div>
