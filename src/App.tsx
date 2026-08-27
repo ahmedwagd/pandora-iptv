@@ -30,6 +30,8 @@ import { useAppStore } from "./stores/appStore";
 import { getXtreamAccount, type XtreamAccount } from "./lib/xtream";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { selectCategories, selectPosterCards, type SortKey } from "./app/selectors/browseSelectors";
+import { useUpdater } from "./hooks/useUpdater";
+import { UpdateBanner } from "./components/UpdateBanner";
 import type { Channel, Series, XtreamCreds } from "./types";
 import "./App.css";
 
@@ -102,6 +104,16 @@ export default function App() {
   const appStrings = strings[appLang];
   const [pinAsk, setPinAsk] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState("");
+  const updater = useUpdater({ notify: true, autoCheck: true });
+  const [settingsInitialGroup, setSettingsInitialGroup] = useState<"profiles" | "account" | "appearance" | "epg" | "playback" | "video" | "parental" | "updates" | undefined>(undefined);
+  const handleViewUpdate = useCallback(() => {
+    setSettingsInitialGroup("updates");
+    setScreen("settings");
+  }, [setScreen]);
+  const handleOpenSettings = useCallback(() => {
+    setSettingsInitialGroup(undefined);
+    setScreen("settings");
+  }, [setScreen]);
 
   useBlockBrowserHotkeys(true);
   const online = useOnline();
@@ -493,11 +505,11 @@ export default function App() {
           setSmartFilter("continue");
         },
       },
-      { id: "settings", label: "Settings", run: () => setScreen("settings") },
+      { id: "settings", label: "Settings", run: () => handleOpenSettings() },
       { id: "help", label: "Keyboard Help", run: () => setHelpOpen(true) },
       { id: "disconnect", label: "Disconnect", run: () => handleDisconnect() },
     ],
-    [goHome, enterContent, setScreen, setSmartFilter, handleDisconnect]
+    [goHome, enterContent, handleOpenSettings, setSmartFilter, handleDisconnect]
   );
 
   const handleGlobalSelect = useCallback((item: { kind: string; original: Channel | Series; name: string }) => {
@@ -563,6 +575,7 @@ export default function App() {
   if (screen === "home") {
     return (
       <>
+      <UpdateBanner updater={updater} onView={handleViewUpdate} />
       <Home
         liveCount={channels.length}
         movieCount={movies.length}
@@ -572,7 +585,7 @@ export default function App() {
         sourceLabel={sourceLabel}
         onSelect={enterContent}
         onDisconnect={handleDisconnect}
-        onSettings={() => setScreen("settings")}
+        onSettings={handleOpenSettings}
         profileName={activeProfile?.name ?? null}
         username={account?.username ?? xtreamCreds?.username ?? null}
         expDateFormatted={account?.expDateFormatted ?? null}
@@ -588,6 +601,8 @@ export default function App() {
     return (
       <>
       <Settings
+        updater={updater}
+        initialGroup={settingsInitialGroup}
         profiles={profiles}
         activeId={activeId}
         onSwitch={handleSwitchProfile}
@@ -606,6 +621,7 @@ export default function App() {
   if (screen === "watch" && active) {
     return (
       <>
+      <UpdateBanner updater={updater} onView={handleViewUpdate} />
       <WatchView
         channel={active}
         onBack={handleExitWatch}
@@ -625,6 +641,7 @@ export default function App() {
   if (screen === "detail" && detailTarget) {
     return (
       <>
+      <UpdateBanner updater={updater} onView={handleViewUpdate} />
       {detailTarget.kind === "movie" ? (
         <DetailPage
           kind="movie"
@@ -672,6 +689,7 @@ export default function App() {
           getEpgForChannel={getEpgForChannel}
         />
         <main className="main">
+          <UpdateBanner updater={updater} onView={handleViewUpdate} />
           {!online && <div className="banner banner-error">Offline — check your connection.</div>}
           {error && <div className="banner banner-error">{error}</div>}
           {sourceLabel && !error && (
@@ -701,6 +719,7 @@ export default function App() {
         onHome={goHome}
       />
       <main className="browse-main">
+        <UpdateBanner updater={updater} onView={handleViewUpdate} />
         {!online && <div className="banner banner-error">Offline — check your connection.</div>}
         <header className="browse-header">
           <h1 className="browse-title">{contentMode === "movie" ? "Movies" : "Series"}</h1>

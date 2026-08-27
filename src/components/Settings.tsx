@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import type { Profile } from "../types/profile";
 import type { XtreamAccount } from "../lib/xtream";
 import { ProfileSwitcher } from "./ProfileSwitcher";
@@ -12,6 +12,7 @@ import { strings, type StringKey } from "../i18n";
 import { useLang } from "../hooks/useLang";
 import { useEpgEnabled } from "../hooks/useEpgEnabled";
 import { useXtreamCreds } from "../hooks/useXtreamCreds";
+import type { UpdaterState } from "../hooks/useUpdater";
 import { useUpdater } from "../hooks/useUpdater";
 
 const GROUPS = [
@@ -71,17 +72,51 @@ function ParentalSettings() {
   );
 }
 
-function UpdatesSettings() {
+function fmtLastChecked(ts: number | null, s: Strings): string {
+  if (ts === null) return s.neverChecked;
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return String(ts);
+  }
+}
+
+function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
   const { lang } = useLang();
   const s = strings[lang];
-  const updater = useUpdater();
+  const fallback = useUpdater({ notify: false, autoCheck: false });
+  const updater = updaterProp ?? fallback;
+  const [expanded, setExpanded] = useState(false);
+
+  const body = updater.info?.body ?? "";
+  const truncated = body.length > 200 && !expanded;
+  const bodyText = truncated ? `${body.slice(0, 200)}…` : body;
+
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div style={{ display: "grid", gap: 10 }}>
       <div className="set-row">
         <span className="set-row-label">{s.currentVersion}</span>
         <span className="set-row-leader" />
-        <span className="set-row-value">{updater.info?.currentVersion ?? "0.1.0"}</span>
+        <span className="set-row-value">{updater.info?.currentVersion ?? "0.1.5"}</span>
       </div>
+
+      {/* Auto-check toggle */}
+      <div className="set-row">
+        <span className="set-row-label">{s.autoCheck}</span>
+        <span className="set-row-leader" />
+        <span className="set-row-value">{updater.autoCheckEnabled ? s.onValue : s.offValue}</span>
+        <button
+          type="button"
+          className={`set-switch ${updater.autoCheckEnabled ? "on" : ""}`}
+          onClick={() => updater.setAutoCheckEnabled(!updater.autoCheckEnabled)}
+          aria-pressed={updater.autoCheckEnabled}
+          aria-label={s.autoCheck}
+        >
+          <span className="set-switch-knob" />
+        </button>
+      </div>
+      <p className="set-hint">{s.autoCheckHint}</p>
+
       {updater.info?.available ? (
         <>
           <div className="set-row">
@@ -89,13 +124,88 @@ function UpdatesSettings() {
             <span className="set-row-leader" />
             <span className="set-row-value">{updater.info.latestVersion}</span>
           </div>
-          <p className="set-hint">{s.updateAvailable}{updater.info.body ? ` — ${updater.info.body.slice(0, 120)}` : ""}</p>
-          <button type="button" className="set-btn" onClick={() => updater.install()}>{s.downloadAndInstall}</button>
+          {updater.isDismissed ? (
+            <p className="set-hint">
+              {s.updateDismissed} {updater.info.latestVersion} —{" "}
+              <button type="button" className="set-opt" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => updater.clearDismiss()}>
+                {s.clearDismiss}
+              </button>
+            </p>
+          ) : (
+            <>
+              <p className="set-hint">
+                <strong>{s.updateAvailable}</strong>
+                {body ? ` — ${bodyText}` : ""}
+                {body.length > 200 && (
+                  <button
+                    type="button"
+                    className="set-opt"
+                    style={{ marginLeft: 8, padding: "2px 8px", fontSize: 11 }}
+                    onClick={() => setExpanded((v) => !v)}
+                  >
+                    {expanded ? s.clearLabel : s.releaseNotes}
+                  </button>
+                )}
+              </p>
+              {updater.needsRestart ? (
+                <>
+                  <p className="set-hint" style={{ color: "var(--signal)", fontWeight: 600 }}>{s.restartRequired}</p>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button type="button" className="set-btn" style={{ background: "var(--primary-container)", color: "var(--surface)", borderColor: "transparent" }} onClick={() => updater.restart()}>
+                      {s.restartNow}
+                    </button>
+                    <button type="button" className="set-opt" onClick={() => updater.dismiss()}>{s.dismiss}</button>
+                  </div>
+                </>
+              ) : updater.downloading ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ flex: 1, height: 6, borderRadius: 9999, background: "var(--surface-container)", overflow: "hidden", border: "1px solid var(--outline-variant)" }}>
+                      <div style={{ width: `${updater.progress ?? 0}%`, height: "100%", background: "var(--signal)", transition: "width 0.2s ease" }} />
+                    </div>
+                    <span className="set-row-value" style={{ fontSize: 11 }}>{updater.progress ?? 0}%</span>
+                  </div>
+                  <p className="set-hint">{s.installing} {updater.progress ?? 0}%</p>
+                </>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="set-btn"
+                    style={{ background: "var(--primary-container)", color: "var(--surface)", borderColor: "transparent" }}
+                    onClick={() => updater.install()}
+                    disabled={updater.checking}
+                  >
+                    {s.downloadAndInstall}
+                  </button>
+                  <button type="button" className="set-opt" onClick={() => updater.dismiss()}>{s.dismiss}</button>
+                </div>
+              )}
+            </>
+          )}
         </>
       ) : (
-        <p className="set-hint">{updater.checking ? s.checking : s.upToDate}</p>
+        <p className="set-hint">{updater.checking ? s.checking : updater.error ? `${s.updateError}: ${updater.error}` : s.upToDate}</p>
       )}
-      <button type="button" className="set-opt" onClick={() => updater.check()} disabled={updater.checking}>{s.checkForUpdates}</button>
+
+      {updater.error && !updater.info?.available && (
+        <p className="set-hint" style={{ color: "#ffb4ab" }}>{updater.error}</p>
+      )}
+
+      <div className="set-row">
+        <span className="set-row-label">{s.lastChecked}</span>
+        <span className="set-row-leader" />
+        <span className="set-row-value" style={{ fontSize: 11 }}>{fmtLastChecked(updater.lastChecked, s)}</span>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="set-opt" onClick={() => updater.check()} disabled={updater.checking || updater.downloading}>
+          {updater.checking ? s.checking : s.checkForUpdates}
+        </button>
+        {updater.info?.available && updater.isDismissed && (
+          <button type="button" className="set-opt" onClick={() => updater.clearDismiss()}>{s.clearDismiss}</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -133,6 +243,8 @@ const fitLabel = (mode: string, s: Strings): string => {
 };
 
 interface SettingsProps {
+  updater?: UpdaterState;
+  initialGroup?: GroupId;
   profiles: Profile[];
   activeId: string | null;
   onSwitch: (id: string) => void;
@@ -145,6 +257,8 @@ interface SettingsProps {
 }
 
 export function Settings({
+  updater,
+  initialGroup,
   profiles,
   activeId,
   onSwitch,
@@ -164,7 +278,10 @@ export function Settings({
   const { enabled: epgPref, setEnabled: setEpgPref } = useEpgEnabled();
   const s = strings[lang];
   const isAr = lang === "ar";
-  const [group, setGroup] = useState<GroupId>("profiles");
+  const [group, setGroup] = useState<GroupId>(initialGroup ?? "profiles");
+  useEffect(() => {
+    if (initialGroup) setGroup(initialGroup);
+  }, [initialGroup]);
   const { creds: savedCreds } = useXtreamCreds(activeId);
   const [showPwd, setShowPwd] = useState(false);
 
@@ -500,7 +617,7 @@ export function Settings({
                 <p className="set-group-desc">{s.updatesDesc}</p>
               </header>
               <div className="set-card">
-                <UpdatesSettings />
+                <UpdatesSettings updater={updater} />
               </div>
             </section>
           )}

@@ -13,6 +13,10 @@
   epgReminders: "epgReminders",
   epgEnabled: "epgEnabled",
   recentSearches: "recentSearches",
+  updaterAutoCheck: "updater:autoCheckEnabled",
+  updaterIntervalMs: "updater:intervalMs",
+  updaterLastChecked: "updater:lastChecked",
+  updaterDismissedVersion: "updater:dismissedVersion",
 } as const;
 
 export type StorageKey = (typeof StorageKeys)[keyof typeof StorageKeys] | string;
