@@ -17,6 +17,9 @@ export function useXtreamCreds(profileId: string | null = null) {
 
   useEffect(() => {
     let cancelled = false;
+    // Mark loading but keep previous creds to avoid login flash when
+    // profileId transitions null -> "default" (same keyring account).
+    setReady(false);
     (async () => {
       // Prefer secure keychain on Tauri
       const secureRaw = await getSecure(profileId);
@@ -26,6 +29,11 @@ export function useXtreamCreds(profileId: string | null = null) {
           if (!cancelled) {
             setCreds(parsed);
             setReady(true);
+            // Keep store as backup for recovery if keyring later fails
+            try {
+              await setValue(key, parsed);
+              if (profileId === "default") await setValue(StorageKeys.xtreamCreds, parsed);
+            } catch {}
             return;
           }
         } catch {}
@@ -36,16 +44,15 @@ export function useXtreamCreds(profileId: string | null = null) {
         saved = await getValue<XtreamCreds>(StorageKeys.xtreamCreds);
         if (saved) await setValue(key, saved);
       }
-      // Migrate legacy plaintext -> keychain
+      // Migrate legacy plaintext -> keychain (keep store as backup for robustness)
       if (saved) {
-        const ok = await saveSecure(profileId, JSON.stringify(saved));
-        if (ok) {
-          void deleteValue(key);
-          if (profileId === "default") void deleteValue(StorageKeys.xtreamCreds);
-        }
+        try {
+          await saveSecure(profileId, JSON.stringify(saved));
+        } catch {}
+        // Keep store as backup; do not delete
       }
       if (!cancelled) {
-        if (saved) setCreds(saved);
+        setCreds(saved ?? null);
         setReady(true);
       }
     })();

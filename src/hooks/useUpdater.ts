@@ -33,7 +33,7 @@ type TauriUpdate = {
 };
 
 const UPDATE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const MANIFEST_FALLBACK_VERSION = "0.2.1";
+const MANIFEST_FALLBACK_VERSION = "0.2.3";
 
 function classifyDownloadErrorI18n(msg: string, s: Record<string, string>): string {
   const low = msg.toLowerCase();

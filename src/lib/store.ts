@@ -15,18 +15,44 @@ export function getStore(): Promise<Store> {
 }
 
 export async function getValue<T>(key: string): Promise<T | undefined> {
-  const store = await getStore();
-  return (await store.get<T>(key)) ?? undefined;
+  try {
+    const store = await getStore();
+    const v = await store.get<T>(key);
+    if (v !== undefined && v !== null) return v;
+  } catch {}
+  // Fallback for web / when store fails (e.g. no Tauri)
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function setValue<T>(key: string, value: T): Promise<void> {
-  const store = await getStore();
-  await store.set(key, value);
+  let ok = false;
+  try {
+    const store = await getStore();
+    await store.set(key, value);
+    ok = true;
+  } catch {}
+  // Always mirror to localStorage as backup for web and recovery
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+  if (!ok) {
+    // if store failed, we already mirrored to localStorage
+  }
 }
 
 export async function deleteValue(key: string): Promise<void> {
-  const store = await getStore();
-  await store.delete(key);
+  try {
+    const store = await getStore();
+    await store.delete(key);
+  } catch {}
+  try {
+    localStorage.removeItem(key);
+  } catch {}
 }
 
 /** For tests: reset singleton */

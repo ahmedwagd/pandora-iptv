@@ -98,7 +98,7 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
       <div className="set-row">
         <span className="set-row-label">{s.currentVersion}</span>
         <span className="set-row-leader" />
-        <span className="set-row-value">{updater.info?.currentVersion ?? "0.2.1"}</span>
+        <span className="set-row-value">{updater.info?.currentVersion ?? "0.2.3"}</span>
       </div>
 
       {/* Auto-check toggle */}
