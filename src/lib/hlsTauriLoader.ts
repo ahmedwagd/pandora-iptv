@@ -41,11 +41,13 @@ export class TauriHlsLoader {
   private controller: AbortController | null = null;
   private stats: HlsLoaderStats = { trequest: 0, tfirst: 0, tload: 0, loaded: 0, total: 0, retry: 0 };
   private timeoutId: number | null = null;
+  private destroyed = false;
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_config?: unknown) {}
 
   load(context: HlsLoaderContext, config: HlsLoaderConfig, callbacks: HlsLoaderCallbacks): void {
+    this.destroyed = false;
     this.stats = { trequest: performance.now(), tfirst: 0, tload: 0, loaded: 0, total: 0, retry: 0 };
     this.controller = new AbortController();
 
@@ -71,6 +73,7 @@ export class TauriHlsLoader {
       signal: this.controller.signal as AbortSignal,
     } as RequestInit)
       .then(async (res) => {
+        if (this.destroyed) return;
         if (this.timeoutId !== null) {
           window.clearTimeout(this.timeoutId);
           this.timeoutId = null;
@@ -92,10 +95,15 @@ export class TauriHlsLoader {
           this.stats.loaded = text.length;
           this.stats.total = text.length;
         }
+        if (this.destroyed) return;
         this.stats.tload = performance.now();
-        callbacks.onSuccess({ url: context.url, data }, this.stats, context, res);
+        // Use the final URL (after redirects) so hls.js resolves relative
+        // segment/key URLs against the actual base (plugin-http follows redirects).
+        const finalUrl = (res as { url?: string }).url || context.url;
+        callbacks.onSuccess({ url: finalUrl, data }, this.stats, context, res);
       })
       .catch((err: unknown) => {
+        if (this.destroyed) return;
         if (this.timeoutId !== null) {
           window.clearTimeout(this.timeoutId);
           this.timeoutId = null;
@@ -124,6 +132,7 @@ export class TauriHlsLoader {
   }
 
   destroy(): void {
+    this.destroyed = true;
     this.abort();
   }
 }

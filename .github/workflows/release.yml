@@ -63,6 +63,6 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "PandoraIPTV ${{ github.ref_name }}"
           releaseBody: "See assets and updater manifest `latest.json`."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: --target x86_64-pc-windows-msvc

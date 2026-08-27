@@ -86,6 +86,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const zapOpenRef = useRef(false);
   useEffect(() => { zapOpenRef.current = zapOpen; }, [zapOpen]);
 
+  // Media (codec/MSE) recovery budget — stops recoverMediaError from looping forever.
+  const MAX_MEDIA_RECOVER = 2;
+  const mediaRecoverRef = useRef(0);
+
   const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
     if (!v) return;
     try {
@@ -398,12 +402,13 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       }
       const hls = new Hls({
         maxBufferLength: 30,
-        enableWorker: true,
+        // WebView2 CSP is `script-src 'self'` (no blob:), which blocks hls.js's
+        // transmuxer worker — run transmuxing on the main thread instead.
+        enableWorker: false,
         manifestLoadingTimeOut: CONNECT_TIMEOUT_MS,
         fragLoadingTimeOut: STALL_TIMEOUT_MS,
         // Use Tauri HTTP to bypass WebView CORS for Xtream HLS (no ACAO headers)
         loader: TauriHlsLoader as unknown as typeof Hls.DefaultConfig.loader,
-        // also enable fetch-based loader fallback timeouts
         xhrSetup: undefined,
       });
       hlsRef.current = hls;
@@ -442,11 +447,16 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          try {
-            hls.recoverMediaError();
-            setStatusWithStamp("reconnecting");
-            return;
-          } catch {}
+          if (mediaRecoverRef.current < MAX_MEDIA_RECOVER) {
+            mediaRecoverRef.current++;
+            try {
+              hls.recoverMediaError();
+              setStatusWithStamp("reconnecting");
+              setError("Recovering stream…");
+              return;
+            } catch {}
+          }
+          // Recovery budget exhausted — fall through so retries terminate cleanly.
         }
         // Delegate to centralized failure handler
         const ch = channelRef.current;
@@ -509,8 +519,14 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             }
           }, decision.delayMs);
         } else {
+          const nd = (data as { networkDetails?: { message?: string } }).networkDetails;
+          const ndMsg = nd?.message && !nd.message.includes("HTTP undefined") ? nd.message : undefined;
           setStatusWithStamp("error");
-          setError(`Stream error: ${data.details}${total > 1 ? ` (all ${total} sources exhausted)` : ""}`);
+          setError(
+            `Stream error: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : ""}${
+              total > 1 ? ` (all ${total} sources exhausted)` : ""
+            }`
+          );
         }
       });
     },
@@ -576,6 +592,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     setStatusWithStamp("loading");
     attemptRef.current = 0;
     sourceIndexRef.current = 0;
+    mediaRecoverRef.current = 0;
     lastProgressRef.current = Date.now();
     const sources = getSources(channel);
     setSourceMeta({ index: 0, total: sources.length, attempt: 0 });
@@ -662,6 +679,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     const onPlaying = () => {
       clearTimers();
       lastProgressRef.current = Date.now();
+      mediaRecoverRef.current = 0;
       setStatusWithStamp("idle");
       refreshTracks();
       applySpeed(video, speedRef.current);
@@ -943,7 +961,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       {status === "reconnecting" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          {error?.startsWith("Switching") ? error : `Reconnecting… (${sourceMeta.attempt}/${3})`}
+          {error ? error : `Reconnecting… (${sourceMeta.attempt}/${3})`}
           {sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}

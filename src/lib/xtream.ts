@@ -391,12 +391,16 @@ export async function getXtreamLiveChannels(
     const url = buildXtreamLiveUrl(creds, s.stream_id);
     const altRaw = buildXtreamLiveAltUrls(creds, s.stream_id, altBases);
     const altUrls = altRaw.filter((u) => u !== url);
+    // Providers sometimes expose the real working stream as direct_source —
+    // prefer it as the first fallback over derived port/protocol guesses.
+    const direct = s.direct_source && s.direct_source.trim() ? s.direct_source.trim() : null;
+    const allAlts = [...(direct && direct !== url ? [direct] : []), ...altUrls];
     const catchup = parseCatchup(s);
     return {
       id: String(s.stream_id),
       name: s.name,
       url,
-      ...(altUrls.length ? { altUrls } : {}),
+      ...(allAlts.length ? { altUrls: allAlts } : {}),
       ...(catchup ? { catchup } : {}),
       logo: s.stream_icon ?? undefined,
       group: nameByCat.get(s.category_id) ?? "Uncategorized",
