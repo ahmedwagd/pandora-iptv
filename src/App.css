@@ -1305,7 +1305,7 @@
   position: relative;
   overflow: hidden;
 }
-.home-tile--loading::after {
+.home-tile--loading::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -1313,6 +1313,7 @@
   transform: translateX(-100%);
   animation: shimmer 1.4s infinite;
   pointer-events: none;
+  z-index: 1;
 }
 .home-tile--loading .home-tile-count {
   display: inline-flex;
@@ -3168,6 +3169,9 @@
 @media (prefers-reduced-motion: reduce) {
   .poster-card.skeleton .skeleton-img::after,
   .poster-card.skeleton .skeleton-line::after,
+  .channel-row.skeleton .skeleton-line::after,
+  .cinematic-skeleton .skeleton-line::after,
+  .home-tile--loading::before,
   .colorbar--loading,
   .inline-loader,
   .spin { animation: none !important; }

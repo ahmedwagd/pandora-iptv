@@ -15,9 +15,12 @@ interface VirtualListRowProps {
   getEpgForChannel?: EpgGetter;
   profileId?: string | null;
   now: number;
+  hasReminder?: (id: string, start: number) => boolean;
+  onToggleReminder?: (ch: Channel, prog: EpgProgramme) => void;
+  getPosition?: (id: string) => { position: number; duration: number } | undefined;
 }
 
-const ROW_HEIGHT = 72;
+const ROW_HEIGHT = 78;
 const OVERSCAN_COUNT = 5;
 const VIRTUALIZATION_THRESHOLD = 150;
 
@@ -33,24 +36,29 @@ function VirtualRow({
   getEpgForChannel,
   profileId,
   now,
+  hasReminder,
+  onToggleReminder,
+  getPosition,
 }: RowComponentProps<VirtualListRowProps>) {
   const channel = filtered[index];
   if (!channel) return null;
   return (
-    <div style={style}>
-      <ChannelRow
-        ch={channel}
-        idx={index}
-        activeId={activeId}
-        favoriteIds={favoriteIds}
-        onSelect={onSelect}
-        onToggleFavorite={onToggleFavorite}
-        showFavorite={showFavorite}
-        getEpgForChannel={getEpgForChannel}
-        profileId={profileId}
-        now={now}
-      />
-    </div>
+    <ChannelRow
+      ch={channel}
+      idx={index}
+      activeId={activeId}
+      favoriteIds={favoriteIds}
+      onSelect={onSelect}
+      onToggleFavorite={onToggleFavorite}
+      showFavorite={showFavorite}
+      getEpgForChannel={getEpgForChannel}
+      profileId={profileId}
+      now={now}
+      style={style}
+      hasReminder={hasReminder}
+      onToggleReminder={onToggleReminder}
+      getPosition={getPosition}
+    />
   );
 }
 
@@ -64,7 +72,9 @@ interface VirtualChannelListProps {
   getEpgForChannel?: EpgGetter;
   profileId?: string | null;
   now: number;
-  height?: number;
+  hasReminder?: (id: string, start: number) => boolean;
+  onToggleReminder?: (ch: Channel, prog: EpgProgramme) => void;
+  getPosition?: (id: string) => { position: number; duration: number } | undefined;
 }
 
 export function VirtualChannelList({
@@ -77,30 +87,40 @@ export function VirtualChannelList({
   getEpgForChannel,
   profileId,
   now,
-  height = 600,
+  hasReminder,
+  onToggleReminder,
+  getPosition,
 }: VirtualChannelListProps) {
   if (filtered.length <= VIRTUALIZATION_THRESHOLD) return null;
 
   return (
-    <List
-      className="channel-list"
-      style={{ height: "100%", maxHeight: height }}
-      rowCount={filtered.length}
-      rowHeight={ROW_HEIGHT}
-      overscanCount={OVERSCAN_COUNT}
-      rowComponent={VirtualRow}
-      rowProps={{
-        filtered,
-        activeId,
-        favoriteIds,
-        onSelect,
-        onToggleFavorite,
-        showFavorite,
-        getEpgForChannel,
-        profileId,
-        now,
-      }}
-    />
+    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+      <List
+        className="channel-list"
+        style={{ height: "100%", width: "100%" }}
+        tagName="ul"
+        role="listbox"
+        aria-label="Channels"
+        rowCount={filtered.length}
+        rowHeight={ROW_HEIGHT}
+        overscanCount={OVERSCAN_COUNT}
+        rowComponent={VirtualRow}
+        rowProps={{
+          filtered,
+          activeId,
+          favoriteIds,
+          onSelect,
+          onToggleFavorite,
+          showFavorite,
+          getEpgForChannel,
+          profileId,
+          now,
+          hasReminder,
+          onToggleReminder,
+          getPosition,
+        }}
+      />
+    </div>
   );
 }
 

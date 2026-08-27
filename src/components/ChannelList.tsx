@@ -69,6 +69,18 @@ export function ChannelList({
     dismissDue,
   } = useEpgReminders(profileId ?? null);
 
+  const handleToggleReminder = (ch: Channel, prog: EpgProgramme) => {
+    if (hasReminder(ch.id, prog.startTime)) removeReminder(`${ch.id}::${prog.startTime}`);
+    else
+      addReminder({
+        channelId: ch.id,
+        channelName: ch.name,
+        title: prog.title,
+        startTime: prog.startTime,
+        stopTime: prog.stopTime,
+      });
+  };
+
   const groups = useMemo(() => {
     const collator = new Intl.Collator(undefined, { sensitivity: "base" });
     const set = new Set<string>();
@@ -83,7 +95,7 @@ export function ChannelList({
     return m;
   }, [channels]);
 
-  const { positions } = usePlaybackResume(profileId ?? null);
+  const { positions, getPosition } = usePlaybackResume(profileId ?? null);
   const continueIds = useMemo(() => {
     const set = new Set<string>();
     for (const [id, pos] of Object.entries(positions)) {
@@ -279,6 +291,9 @@ export function ChannelList({
               getEpgForChannel={getEpgForChannel}
               profileId={profileId}
               now={now}
+              hasReminder={hasReminder}
+              onToggleReminder={handleToggleReminder}
+              getPosition={getPosition}
             />
           ) : (
             <ul className="channel-list" role="listbox" aria-label="Channels">
@@ -296,18 +311,8 @@ export function ChannelList({
                   profileId={profileId}
                   hasReminder={hasReminder}
                   now={now}
-                  onToggleReminder={(channel, prog) => {
-                    if (hasReminder(channel.id, prog.startTime))
-                      removeReminder(`${channel.id}::${prog.startTime}`);
-                    else
-                      addReminder({
-                        channelId: channel.id,
-                        channelName: channel.name,
-                        title: prog.title,
-                        startTime: prog.startTime,
-                        stopTime: prog.stopTime,
-                      });
-                  }}
+                  onToggleReminder={handleToggleReminder}
+                  getPosition={getPosition}
                 />
               ))}
             </ul>

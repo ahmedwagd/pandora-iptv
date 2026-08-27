@@ -106,7 +106,6 @@ export default function App() {
   const [pinAsk, setPinAsk] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState("");
   const updater = useUpdater({ notify: true, autoCheck: true });
-  const isAnyLoading = loading || moviesLoading || seriesLoading || movieDetailLoading || episodesLoading;
   const [settingsInitialGroup, setSettingsInitialGroup] = useState<"profiles" | "account" | "appearance" | "epg" | "playback" | "video" | "parental" | "updates" | undefined>(undefined);
   const handleViewUpdate = useCallback(() => {
     setSettingsInitialGroup("updates");
@@ -140,6 +139,8 @@ export default function App() {
     refresh: refreshEpg,
     loading: epgLoading,
   } = useEpg(xtreamCreds, epgEnabled);
+  const isLiveLoading = loading || epgLoading;
+  const isBrowseLoading = contentMode === "movie" ? moviesLoading : contentMode === "series" ? seriesLoading : false;
   const activeEpg = active ? getEpgForChannel(active.id) : undefined;
   const { recent: recentSearches, push: pushRecent, clear: clearRecent } = useRecentSearches(activeId);
   const searchIndex = useMemo(() => buildSearchIndex({ channels, movies, series }), [channels, movies, series]);
@@ -435,10 +436,14 @@ export default function App() {
   const handleRetry = useCallback(() => {
     if (xtreamCreds) {
       loadFromXtream(xtreamCreds);
-    } else if (sourceLabel) {
+    } else if (sourceKind === "m3u" && sourceLabel?.startsWith("http")) {
+      loadFromUrl(sourceLabel);
+    } else if (sourceKind === "m3u") {
+      void loadFromFile();
+    } else if (sourceLabel?.startsWith("http")) {
       loadFromUrl(sourceLabel);
     }
-  }, [xtreamCreds, sourceLabel, loadFromXtream, loadFromUrl]);
+  }, [xtreamCreds, sourceKind, sourceLabel, loadFromXtream, loadFromUrl, loadFromFile]);
 
   const handleOpenPoster = useCallback(
     (id: string) => {
@@ -701,7 +706,7 @@ export default function App() {
           epgLoading={epgLoading}
         />
         <main className="main">
-          {isAnyLoading && <ColorBar className="colorbar--loading" />}
+          {isLiveLoading && <ColorBar className="colorbar--loading" />}
           <UpdateBanner updater={updater} onView={handleViewUpdate} />
           {!online && <div className="banner banner-error">Offline — check your connection.</div>}
           {error && (
@@ -745,7 +750,7 @@ export default function App() {
         onHome={goHome}
       />
       <main className="browse-main">
-        {isAnyLoading && <ColorBar className="colorbar--loading" />}
+        {isBrowseLoading && <ColorBar className="colorbar--loading" />}
         <UpdateBanner updater={updater} onView={handleViewUpdate} />
         {error && (
           <div className="banner banner-error" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>

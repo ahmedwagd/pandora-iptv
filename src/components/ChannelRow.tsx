@@ -2,7 +2,6 @@ import { memo } from "react";
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
 import { MediaImage } from "./MediaImage";
-import { usePlaybackResume } from "../hooks/usePlaybackResume";
 
 function fmtResumeRow(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return "00:00";
@@ -48,6 +47,8 @@ export interface ChannelRowProps {
   hasReminder?: (id: string, start: number) => boolean;
   onToggleReminder?: (ch: Channel, prog: EpgProgramme) => void;
   now: number;
+  style?: React.CSSProperties;
+  getPosition?: (id: string) => { position: number; duration: number } | undefined;
 }
 
 export const ChannelRow = memo(function ChannelRow({
@@ -63,13 +64,15 @@ export const ChannelRow = memo(function ChannelRow({
   hasReminder,
   onToggleReminder,
   now,
+  style,
+  getPosition,
 }: ChannelRowProps) {
+  void profileId;
   const isActive = ch.id === activeId;
   const isFav = favoriteIds.has(ch.id);
   const epg = getEpgForChannel?.(ch.id);
-  const { getPosition } = usePlaybackResume(profileId ?? null);
-  const saved = getPosition(ch.id);
-  const resumable = saved && isResumableRow(saved.position, saved.duration);
+  const saved = getPosition?.(ch.id);
+  const resumable = saved ? isResumableRow(saved.position, saved.duration) : false;
   void hasReminder;
   void onToggleReminder;
 
@@ -86,6 +89,7 @@ export const ChannelRow = memo(function ChannelRow({
       tabIndex={0}
       role="option"
       aria-selected={isActive}
+      style={style}
     >
       <span className="channel-num" aria-hidden>
         {String(idx + 1).padStart(2, "0")}

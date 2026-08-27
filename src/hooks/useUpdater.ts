@@ -47,11 +47,9 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       checkingRef.current = true;
       setChecking(true);
       setError(null);
-      // Web preview / non-Tauri: simulate checking with visible spinner
+      // Web preview / non-Tauri: simulate checking with visible spinner but do not pollute persisted lastChecked
       if (typeof window === "undefined" || !("__TAURI__" in window)) {
         await new Promise((r) => setTimeout(r, 900));
-        const now = Date.now();
-        setLastCheckedRef.current(now);
         setInfo((prev) => prev ?? { available: false, currentVersion: "0.1.5" });
         setChecking(false);
         checkingRef.current = false;
