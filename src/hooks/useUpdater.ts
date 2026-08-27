@@ -17,6 +17,10 @@ export interface UseUpdaterOptions {
   intervalMs?: number;
 }
 
+function isTauri(): boolean {
+  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+}
+
 export function useUpdater(opts: UseUpdaterOptions = {}) {
   const { notify = false, intervalMs } = opts;
   const prefs = useUpdaterPrefs();
@@ -37,6 +41,8 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
   notifyRef.current = notify;
   const dismissedRef = useRef<string | null>(null);
   const setLastCheckedRef = useRef(prefs.setLastChecked);
+  const langRef = useRef(lang);
+  const stringsRef = useRef(s);
   // keep refs in sync
   useEffect(() => {
     dismissedRef.current = prefs.dismissedVersion;
@@ -44,6 +50,12 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
   useEffect(() => {
     setLastCheckedRef.current = prefs.setLastChecked;
   }, [prefs.setLastChecked]);
+  useEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
+  useEffect(() => {
+    stringsRef.current = s;
+  }, [s]);
 
   const check = useCallback(
     async (withNotify = notifyRef.current) => {
@@ -52,9 +64,9 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       setChecking(true);
       setError(null);
       // Web preview / non-Tauri: simulate checking with visible spinner but do not pollute persisted lastChecked
-      if (typeof window === "undefined" || !("__TAURI__" in window)) {
+      if (!isTauri()) {
         await new Promise((r) => setTimeout(r, 900));
-        setInfo((prev) => prev ?? { available: false, currentVersion: "0.1.5" });
+        setInfo((prev) => prev ?? { available: false, currentVersion: "0.1.7" });
         setChecking(false);
         checkingRef.current = false;
         return;
@@ -75,16 +87,24 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
           const dismissed = dismissedRef.current;
           const shouldNotify = withNotify && dismissed !== next.latestVersion;
           if (shouldNotify) {
-            void notifyUpdateAvailable(next, lang);
+            void notifyUpdateAvailable(next, langRef.current);
           }
         } else if (update) {
           setInfo({ available: false, currentVersion: update.currentVersion });
         } else {
-          setInfo((prev) => prev ?? { available: false, currentVersion: "0.0.0" });
+          // No update: `check()` returned null (Tauri v2 semantics: null means up-to-date).
+          // Preserve known currentVersion or fallback to manifest version.
+          setInfo((prev) => ({ available: false, currentVersion: prev?.currentVersion ?? "0.1.7" }));
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg && !msg.includes("unconfigured")) setError(msg);
+        // "unconfigured" is expected in dev builds without updater artifacts; hide to avoid noise,
+        // but still log for debugging. Any other error surfaces to the user.
+        if (msg && msg.toLowerCase().includes("unconfigured")) {
+          console.warn("[updater] check skipped (unconfigured):", msg);
+        } else if (msg) {
+          setError(msg);
+        }
       } finally {
         setChecking(false);
         checkingRef.current = false;
@@ -95,7 +115,7 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
 
   const install = useCallback(async () => {
     if (checkingRef.current || downloading) return;
-    if (typeof window === "undefined" || !("__TAURI__" in window)) {
+    if (!isTauri()) {
       setError(null);
       setDownloading(true);
       setProgress(0);
@@ -116,7 +136,7 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
       if (!update?.available) {
-        setError(s.noUpdateAvailable);
+        setError(stringsRef.current.noUpdateAvailable);
         setDownloading(false);
         setProgress(null);
         return;
@@ -156,23 +176,23 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       setNeedsRestart(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || s.downloadFailed);
+      setError(msg || stringsRef.current.downloadFailed);
       setProgress(null);
     } finally {
       setDownloading(false);
     }
-  }, [downloading, s.downloadFailed]);
+  }, [downloading]);
 
   const restart = useCallback(async () => {
-    if (typeof window === "undefined" || !("__TAURI__" in window)) return;
+    if (!isTauri()) return;
     try {
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || s.restartFailed);
+      setError(msg || stringsRef.current.restartFailed);
     }
-  }, [s.restartFailed]);
+  }, []);
 
   const dismiss = useCallback(() => {
     const v = info?.latestVersion ?? null;

@@ -4190,7 +4190,160 @@
 }
 
 /* ============================================================
-   Responsive — floor 1200×800, graceful collapse
+   Splash — launch signal · spinning loader
+   Full-viewport overlay with SIGNAL canvas + phosphor spinner.
+   Works for both static #app-splash (index.html) and React
+   SplashScreen. Fades via .splash--fading.
+   ============================================================ */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(820px 520px at 10% -6%, rgba(46, 230, 168, 0.09), transparent 60%),
+    radial-gradient(640px 420px at 88% 94%, rgba(46, 230, 168, 0.04), transparent 60%),
+    var(--background, #0d1511);
+  overflow: hidden;
+  transition:
+    opacity 360ms cubic-bezier(0.2, 0, 0, 1),
+    visibility 360ms cubic-bezier(0.2, 0, 0, 1);
+}
+.splash--fading {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.splash-glow {
+  position: absolute;
+  width: 560px;
+  height: 560px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(46, 230, 168, 0.08), transparent 70%);
+  pointer-events: none;
+  filter: blur(2px);
+}
+.splash-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+  max-width: 360px;
+  width: 100%;
+}
+.splash-colorbar {
+  margin-bottom: 6px;
+}
+.splash-eyebrow {
+  margin: 0;
+  font-family: var(--font-mono, "JetBrains Mono", monospace);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--signal, #2ee6a8);
+  font-weight: 600;
+}
+.splash-wordmark {
+  margin: 0;
+  font-family: var(--font-display, "Space Grotesk", sans-serif);
+  font-weight: 700;
+  font-size: 42px;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: var(--on-surface, #dce5dd);
+}
+.splash-wordmark-accent {
+  color: var(--signal, #2ee6a8);
+  font-weight: 800;
+}
+.splash-tagline {
+  margin: 0;
+  font-family: var(--font-body, "Archivo", sans-serif);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--on-surface-variant, #bacac0);
+}
+.splash-tagline strong {
+  color: var(--on-surface, #dce5dd);
+  font-weight: 600;
+}
+.splash-loader {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+.splash-spinner {
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--outline-variant, #3b4a42);
+  border-top-color: var(--signal, #2ee6a8);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.82s linear infinite;
+  box-shadow: 0 0 16px rgba(46, 230, 168, 0.18);
+  flex-shrink: 0;
+}
+.splash-status {
+  margin: 2px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant, #bacac0);
+}
+.splash-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--signal, #2ee6a8);
+  box-shadow: 0 0 8px rgba(46, 230, 168, 0.6);
+  animation: epg-pulse 1.4s ease-in-out infinite;
+}
+.splash-foot {
+  position: absolute;
+  right: 28px;
+  bottom: 18px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: rgba(220, 229, 221, 0.18);
+  pointer-events: none;
+}
+
+@media (max-width: 520px) {
+  .splash-wordmark {
+    font-size: 34px;
+  }
+  .splash-foot {
+    right: 16px;
+    bottom: 12px;
+    font-size: 9px;
+  }
+}
+
+/* light theme — keep same broadcast identity, softer aura */
+[data-theme="light"] .splash {
+  background:
+    radial-gradient(820px 520px at 10% -6%, rgba(61, 209, 156, 0.09), transparent 60%),
+    radial-gradient(640px 420px at 88% 94%, rgba(236, 180, 87, 0.04), transparent 60%),
+    var(--background, #2c3a33);
+}
+[data-theme="light"] .splash-foot {
+  color: rgba(233, 240, 236, 0.22);
+}
+
+/* ============================================================
+    Responsive — floor 1200×800, graceful collapse
    12-col desktop → 2-col posters on mobile
    ============================================================ */
 @media (max-width: 1100px) {

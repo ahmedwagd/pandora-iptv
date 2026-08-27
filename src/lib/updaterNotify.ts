@@ -7,9 +7,13 @@ import { strings, type Lang } from "../i18n";
  * Caller should also render an in-app banner.
  * @param lang - UI language for localized title/body (defaults to "en")
  */
+function isTauri(): boolean {
+  return typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window);
+}
+
 export async function notifyUpdateAvailable(info: UpdateInfo, lang: Lang = "en"): Promise<boolean> {
   if (!info.available || !info.latestVersion) return false;
-  if (typeof window === "undefined" || !("__TAURI__" in window)) return false;
+  if (!isTauri()) return false;
   try {
     const { isPermissionGranted, requestPermission, sendNotification } =
       await import("@tauri-apps/plugin-notification");

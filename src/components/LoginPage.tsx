@@ -7,6 +7,7 @@ import { ThemeToggle } from "../theme";
 
 interface LoginPageProps {
   xtreamCreds: XtreamCreds | null;
+  credsReady?: boolean;
   loading: boolean;
   error: string | null;
   onLoadXtream: (creds: XtreamCreds, remember: boolean) => void;
@@ -21,6 +22,7 @@ interface LoginPageProps {
 
 export function LoginPage({
   xtreamCreds,
+  credsReady = true,
   loading,
   error,
   onLoadXtream,
@@ -43,20 +45,21 @@ export function LoginPage({
   // Saved credentials load from disk asynchronously; backfill the form
   // once they arrive. When profile switches (activeId changes), sync fields
   // to the new profile's creds so login always reflects active profile.
+  // Only clear when credsReady confirms no saved creds for this profile.
   useEffect(() => {
     if (xtreamCreds) {
       setServer(xtreamCreds.server || "");
       setUsername(xtreamCreds.username || "");
       setPassword(xtreamCreds.password || "");
       setRemember(true);
-    } else if (activeId) {
+    } else if (activeId && credsReady) {
       // profile without saved creds — clear form for fresh login
       setServer("");
       setUsername("");
       setPassword("");
       setRemember(false);
     }
-  }, [xtreamCreds, activeId]);
+  }, [xtreamCreds, activeId, credsReady]);
 
   const canConnect = Boolean(server.trim() && username.trim() && password.trim() && !loading);
   const canLoadUrl = Boolean(url.trim() && !loading);

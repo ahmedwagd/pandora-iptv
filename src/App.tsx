@@ -34,6 +34,7 @@ import { selectCategories, selectPosterCards, type SortKey } from "./app/selecto
 import { useUpdater } from "./hooks/useUpdater";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ColorBar } from "./components/ColorBar";
+import { SplashScreen } from "./components/SplashScreen";
 import type { Channel, Series, XtreamCreds, ContentMode } from "./types";
 import "./App.css";
 
@@ -82,6 +83,7 @@ export default function App() {
     creds: xtreamCreds,
     save: saveXtreamCreds,
     clear: clearXtreamCreds,
+    ready: xtreamReady,
   } = useXtreamCreds(activeId);
   const { history, record, remove: removeHistory } = useWatchHistory(activeId);
   const { positions: playbackPositions, getPosition, clearPosition } = usePlaybackResume(activeId);
@@ -153,6 +155,39 @@ export default function App() {
   useFocusTrap(showClearPrompt, () => setShowClearPrompt(false), clearDialogRef);
   useFocusTrap(helpOpen, () => setHelpOpen(false), helpDialogRef);
 
+  // Splash — 300ms overlay, waits for profiles/creds so remember-me can
+  // auto-login before reveal (no login flash). If creds exist, waits for
+  // sourceKind to resolve (auto-login fetch). Safety max 3s.
+  const isTestEnv = (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE === "test";
+  const [splashVisible, setSplashVisible] = useState(() => !isTestEnv);
+  const [splashFading, setSplashFading] = useState(false);
+
+  useEffect(() => {
+    if (isTestEnv || !splashVisible || splashFading) return;
+    if (!profilesReady || !xtreamReady) return;
+    if (xtreamCreds && sourceKind === null) return; // auto-login pending
+    const showId = window.setTimeout(() => setSplashFading(true), 200);
+    return () => window.clearTimeout(showId);
+  }, [isTestEnv, splashVisible, splashFading, profilesReady, xtreamReady, xtreamCreds, sourceKind]);
+
+  useEffect(() => {
+    if (!splashFading) return;
+    const hideId = window.setTimeout(() => setSplashVisible(false), 100);
+    return () => window.clearTimeout(hideId);
+  }, [splashFading]);
+
+  // Ultimate safety: never stay stuck more than 3s even if store hangs
+  useEffect(() => {
+    if (isTestEnv || !splashVisible) return;
+    const killId = window.setTimeout(() => {
+      setSplashFading(true);
+      window.setTimeout(() => setSplashVisible(false), 100);
+    }, 3000);
+    return () => window.clearTimeout(killId);
+  }, [isTestEnv, splashVisible]);
+
+  const splashOverlay = splashVisible ? <SplashScreen fading={splashFading} /> : null;
+
   useBlockBrowserHotkeys(true);
   const online = useOnline();
   useEffect(() => {
@@ -202,7 +237,7 @@ export default function App() {
 
   // When active profile changes, reconcile playlist with that profile's creds
   useEffect(() => {
-    if (!profilesReady || !activeId) return;
+    if (!profilesReady || !activeId || !xtreamReady) return;
     // if new profile has saved creds and no playlist loaded, auto-load it
     if (xtreamCreds && sourceKind === null && !loading) {
       loadFromXtream(xtreamCreds);
@@ -212,6 +247,7 @@ export default function App() {
   }, [
     profilesReady,
     activeId,
+    xtreamReady,
     xtreamCreds,
     sourceKind,
     loading,
@@ -330,9 +366,9 @@ export default function App() {
   );
 
   const handleLoadXtream = useCallback(
-    (creds: XtreamCreds, remember: boolean) => {
-      if (remember) saveXtreamCreds(creds);
-      else clearXtreamCreds();
+    async (creds: XtreamCreds, remember: boolean) => {
+      if (remember) await saveXtreamCreds(creds);
+      else await clearXtreamCreds();
       setContentMode("live");
       setScreen("home");
       loadFromXtream(creds);
@@ -710,28 +746,35 @@ export default function App() {
 
   if (!profilesReady) {
     return (
-      <div className="player-empty">
-        <span className="inline-loader" aria-hidden />
-        Loading profiles…
-      </div>
+      <>
+        <div className="player-empty">
+          <span className="inline-loader" aria-hidden />
+          Loading profiles…
+        </div>
+        {splashOverlay}
+      </>
     );
   }
 
   if (sourceKind === null) {
     return (
-      <LoginPage
-        xtreamCreds={xtreamCreds}
-        loading={loading}
-        error={error}
-        onLoadXtream={handleLoadXtream}
-        onLoadUrl={handleLoadUrl}
-        onLoadFile={handleLoadFile}
-        profiles={profiles}
-        activeId={activeId}
-        onSwitchProfile={handleSwitchProfile}
-        onCreateProfile={createProfile}
-        onDeleteProfile={removeProfile}
-      />
+      <>
+        <LoginPage
+          xtreamCreds={xtreamCreds}
+          credsReady={xtreamReady}
+          loading={loading}
+          error={error}
+          onLoadXtream={handleLoadXtream}
+          onLoadUrl={handleLoadUrl}
+          onLoadFile={handleLoadFile}
+          profiles={profiles}
+          activeId={activeId}
+          onSwitchProfile={handleSwitchProfile}
+          onCreateProfile={createProfile}
+          onDeleteProfile={removeProfile}
+        />
+        {splashOverlay}
+      </>
     );
   }
 
@@ -778,6 +821,7 @@ export default function App() {
           </div>
         </div>
       )}
+      {splashOverlay}
       </>
     );
   }
@@ -799,6 +843,7 @@ export default function App() {
         onDisconnect={handleDisconnect}
       />
       {globalSearchOverlay}
+      {splashOverlay}
       </>
     );
   }
@@ -821,6 +866,7 @@ export default function App() {
         onNext={watch}
       />
       {globalSearchOverlay}
+      {splashOverlay}
       </>
     );
   }
@@ -857,6 +903,7 @@ export default function App() {
         />
       )}
       {globalSearchOverlay}
+      {splashOverlay}
       </>
     );
   }
@@ -906,11 +953,13 @@ export default function App() {
         </main>
       </div>
       {globalSearchOverlay}
+      {splashOverlay}
       </>
     );
   }
 
   return (
+    <>
     <div className="app">
       <FilterSidebar
         smartFilter={smartFilter}
@@ -1124,5 +1173,7 @@ export default function App() {
         </ErrorBoundary>
       </main>
     </div>
+    {splashOverlay}
+    </>
   );
 }

@@ -55,34 +55,45 @@ export function useXtreamCreds(profileId: string | null = null) {
   }, [key, profileId]);
 
   const save = useCallback(
-    (c: XtreamCreds) => {
+    async (c: XtreamCreds) => {
       setCreds(c);
       const json = JSON.stringify(c);
-      void saveSecure(profileId, json).then((ok) => {
+      try {
+        const ok = await saveSecure(profileId, json);
         if (!ok) {
-          void setValue(key, c);
-          if (profileId === "default") void setValue(StorageKeys.xtreamCreds, c);
+          await setValue(key, c);
+          if (profileId === "default") await setValue(StorageKeys.xtreamCreds, c);
         } else {
-          // Ensure legacy store does not retain plaintext on Tauri
-          void deleteValue(key);
-          if (profileId === "default") void deleteValue(StorageKeys.xtreamCreds);
+          // Keep store as backup for recovery if keyring becomes unavailable;
+          // still remove plaintext fallback after successful secure save to avoid duplication,
+          // but ensure next launch can recover from store if keyring fails.
+          // For now keep backup: also save to store as fallback (commented delete).
+          // void deleteValue will be handled on next successful secure read.
+          await setValue(key, c);
+          if (profileId === "default") await setValue(StorageKeys.xtreamCreds, c);
         }
-      });
+      } catch {
+        await setValue(key, c);
+        if (profileId === "default") await setValue(StorageKeys.xtreamCreds, c);
+      }
     },
     [key, profileId]
   );
 
-  const clear = useCallback(() => {
+  const clear = useCallback(async () => {
     setCreds(null);
-    void deleteSecure(profileId).then((ok) => {
+    try {
+      const ok = await deleteSecure(profileId);
+      // Always clean store as well
+      await deleteValue(key);
+      if (profileId === "default") await deleteValue(StorageKeys.xtreamCreds);
       if (!ok) {
-        void deleteValue(key);
-        if (profileId === "default") void deleteValue(StorageKeys.xtreamCreds);
-      } else {
-        void deleteValue(key);
-        if (profileId === "default") void deleteValue(StorageKeys.xtreamCreds);
+        // fallback already handled
       }
-    });
+    } catch {
+      await deleteValue(key);
+      if (profileId === "default") await deleteValue(StorageKeys.xtreamCreds);
+    }
   }, [key, profileId]);
 
   return { creds, save, clear, ready };
