@@ -66,7 +66,7 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       // Web preview / non-Tauri: simulate checking with visible spinner but do not pollute persisted lastChecked
       if (!isTauri()) {
         await new Promise((r) => setTimeout(r, 900));
-        setInfo((prev) => prev ?? { available: false, currentVersion: "0.1.7" });
+        setInfo((prev) => prev ?? { available: false, currentVersion: "0.2.1" });
         setChecking(false);
         checkingRef.current = false;
         return;
@@ -94,7 +94,7 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
         } else {
           // No update: `check()` returned null (Tauri v2 semantics: null means up-to-date).
           // Preserve known currentVersion or fallback to manifest version.
-          setInfo((prev) => ({ available: false, currentVersion: prev?.currentVersion ?? "0.1.7" }));
+          setInfo((prev) => ({ available: false, currentVersion: prev?.currentVersion ?? "0.2.1" }));
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
