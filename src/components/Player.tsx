@@ -822,16 +822,6 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     };
   }, [channel, savePosition, clearPosition, resumePrompt]);
 
-  if (!channel) {
-    return (
-      <div className="player-empty">
-        <ColorBar className="colorbar--dim" />
-        <p className="player-empty-title">No signal</p>
-        <p className="player-empty-hint">Select a channel from the guide.</p>
-      </div>
-    );
-  }
-
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const v = videoRef.current;
@@ -863,6 +853,16 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     },
     [toggleFullscreen, handleSeek, skipDuration]
   );
+
+  if (!channel) {
+    return (
+      <div className="player-empty">
+        <ColorBar className="colorbar--dim" />
+        <p className="player-empty-title">No signal</p>
+        <p className="player-empty-hint">Select a channel from the guide.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="player" onDoubleClick={handleDoubleClick}>
