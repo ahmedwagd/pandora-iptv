@@ -421,11 +421,11 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
     const v = info?.latestVersion ?? null;
     if (v) prefs.setDismissedVersion(v);
     // Dismiss only hides banner; do NOT clear stagedVersion – keeps restart available via Settings
-  }, [info?.latestVersion, prefs.setDismissedVersion]);
+  }, [info?.latestVersion, prefs]);
 
   const clearDismiss = useCallback(() => {
     prefs.setDismissedVersion(null);
-  }, [prefs.setDismissedVersion]);
+  }, [prefs]);
 
   // Initial check on mount if autoCheck enabled and prefs ready
   useEffect(() => {
