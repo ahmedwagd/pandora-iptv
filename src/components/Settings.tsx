@@ -125,13 +125,28 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
             <span className="set-row-leader" />
             <span className="set-row-value">{updater.info.latestVersion}</span>
           </div>
-          {updater.isDismissed ? (
+          {updater.isDismissed && !updater.needsRestart ? (
             <p className="set-hint">
               {s.updateDismissed} {updater.info.latestVersion} —{" "}
               <button type="button" className="set-opt" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => updater.clearDismiss()}>
                 {s.clearDismiss}
               </button>
             </p>
+          ) : updater.isDismissed && updater.needsRestart ? (
+            <>
+              <p className="set-hint">
+                {s.updateDismissed} {updater.info.latestVersion} —{" "}
+                <button type="button" className="set-opt" style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => updater.clearDismiss()}>
+                  {s.clearDismiss}
+                </button>
+              </p>
+              <p className="set-hint" style={{ color: "var(--signal)", fontWeight: 600 }}>{s.restartRequired}</p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" className="set-btn" style={{ background: "var(--primary-container)", color: "var(--surface)", borderColor: "transparent" }} onClick={() => updater.restart()}>
+                  {s.restartNow}
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <p className="set-hint">
@@ -161,7 +176,14 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
               ) : updater.downloading ? (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ flex: 1, height: 6, borderRadius: 9999, background: "var(--surface-container)", overflow: "hidden", border: "1px solid var(--outline-variant)" }}>
+                    <div
+                      style={{ flex: 1, height: 6, borderRadius: 9999, background: "var(--surface-container)", overflow: "hidden", border: "1px solid var(--outline-variant)" }}
+                      role="progressbar"
+                      aria-valuenow={updater.progress ?? 0}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={s.installing}
+                    >
                       <div style={{ width: `${updater.progress ?? 0}%`, height: "100%", background: "var(--signal)", transition: "width 0.2s ease" }} />
                     </div>
                     <span className="set-row-value" style={{ fontSize: 11 }}>{updater.progress ?? 0}%</span>
@@ -175,11 +197,11 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
                     className="set-btn"
                     style={{ background: "var(--primary-container)", color: "var(--surface)", borderColor: "transparent" }}
                     onClick={() => updater.install()}
-                    disabled={updater.checking}
+                    disabled={updater.checking || updater.downloading || updater.needsRestart}
                   >
                     {s.downloadAndInstall}
                   </button>
-                  <button type="button" className="set-opt" onClick={() => updater.dismiss()}>{s.dismiss}</button>
+                  <button type="button" className="set-opt" onClick={() => updater.dismiss()} disabled={updater.downloading}>{s.dismiss}</button>
                 </div>
               )}
             </>
@@ -196,8 +218,24 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
         </p>
       )}
 
-      {updater.error && !updater.info?.available && (
-        <p className="set-hint" style={{ color: "#ffb4ab" }}>{updater.error}</p>
+      {updater.error && (
+        <div style={{ display: "grid", gap: 6 }}>
+          <p className="set-hint" style={{ color: "#ffb4ab" }}>{updater.error}</p>
+          {!updater.downloading && !updater.checking && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                className="set-opt"
+                onClick={() => {
+                  if (updater.info?.available) void updater.install();
+                  else void updater.check();
+                }}
+              >
+                {updater.info?.available ? s.retry : s.checkForUpdates}
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="set-row">

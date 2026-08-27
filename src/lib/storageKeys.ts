@@ -17,6 +17,7 @@
   updaterIntervalMs: "updater:intervalMs",
   updaterLastChecked: "updater:lastChecked",
   updaterDismissedVersion: "updater:dismissedVersion",
+  updaterStagedVersion: "updater:stagedVersion",
   browseFilters: "filters",
   channelListFilters: "channelList",
   virtualPosterEnabled: "virtualPoster",

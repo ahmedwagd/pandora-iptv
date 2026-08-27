@@ -76,7 +76,8 @@ export function UpdateBanner({ updater, onView }: Props) {
               fontSize: 11,
             }}
             onClick={() => updater.install()}
-            disabled={updater.checking || updater.downloading}
+            disabled={updater.checking || updater.downloading || updater.needsRestart}
+            aria-busy={updater.downloading}
           >
             {updater.downloading ? `${s.installing} ${updater.progress ?? 0}%` : s.downloadAndInstall}
           </button>
