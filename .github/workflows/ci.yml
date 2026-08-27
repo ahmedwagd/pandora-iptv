@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# CI does not need write access
+permissions:
+  contents: read
+
+jobs:
+  check-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint src
+
+      - name: Tests
+        run: npm run test
+
+      - name: Build frontend (no Tauri bundle)
+        run: npm run build
+
+      # Optional: verify Tauri builds without releasing
+      # Uncomment if you want full bundle validation on every PR (adds ~8-12 min)
+      # - name: Tauri build (check only)
+      #   run: npx tauri build --target x86_64-pc-windows-msvc --debug
