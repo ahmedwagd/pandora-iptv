@@ -12,6 +12,9 @@ interface SidebarProps {
   onHome: () => void;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
   epgLoading?: boolean;
+  onSearchOpen?: () => void;
+  onHelpOpen?: () => void;
+  profileId?: string | null;
 }
 
 export function Sidebar({
@@ -24,6 +27,9 @@ export function Sidebar({
   onHome,
   getEpgForChannel,
   epgLoading = false,
+  onSearchOpen,
+  onHelpOpen,
+  profileId,
 }: SidebarProps) {
   return (
     <div className="sidebar">
@@ -38,6 +44,16 @@ export function Sidebar({
           </span>
         </div>
         <div className="sidebar-actions">
+          {onSearchOpen && (
+            <button className="change-source" onClick={onSearchOpen} aria-label="Search">
+              🔍
+            </button>
+          )}
+          {onHelpOpen && (
+            <button className="change-source" onClick={onHelpOpen} aria-label="Help">
+              ?
+            </button>
+          )}
           <button className="change-source" onClick={onHome} title="Back to dashboard">
             Home
           </button>
@@ -53,6 +69,7 @@ export function Sidebar({
         loading={loading}
         getEpgForChannel={getEpgForChannel}
         epgLoading={epgLoading}
+        profileId={profileId}
         categoriesFirst
       />
     </div>

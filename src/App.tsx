@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { Player } from "./components/Player";
 import { LoginPage } from "./components/LoginPage";
@@ -15,6 +15,7 @@ import { useEpg } from "./hooks/useEpg";
 import { useEpgEnabled } from "./hooks/useEpgEnabled";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useBlockBrowserHotkeys } from "./hooks/useBlockBrowserHotkeys";
+import { useFocusTrap } from "./hooks/useFocusTrap";
 import { useOnline } from "./hooks/useOnline";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { GlobalSearch } from "./components/GlobalSearch";
@@ -26,15 +27,23 @@ import { strings } from "./i18n";
 import { useProfiles } from "./hooks/useProfiles";
 import { usePlaybackResume } from "./hooks/usePlaybackResume";
 import { Settings } from "./components/Settings";
-import { useAppStore } from "./stores/appStore";
+import { useAppStore, type Screen } from "./stores/appStore";
 import { getXtreamAccount, type XtreamAccount } from "./lib/xtream";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { selectCategories, selectPosterCards, type SortKey } from "./app/selectors/browseSelectors";
 import { useUpdater } from "./hooks/useUpdater";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ColorBar } from "./components/ColorBar";
-import type { Channel, Series, XtreamCreds } from "./types";
+import type { Channel, Series, XtreamCreds, ContentMode } from "./types";
 import "./App.css";
+
+function isResumableApp(pos: number, dur: number): boolean {
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
+  if (pos < 10) return false;
+  if (dur - pos < 15) return false;
+  const pct = pos / dur;
+  return pct > 0.01 && pct < 0.985;
+}
 
 export default function App() {
   const {
@@ -75,7 +84,7 @@ export default function App() {
     clear: clearXtreamCreds,
   } = useXtreamCreds(activeId);
   const { history, record, remove: removeHistory } = useWatchHistory(activeId);
-  const { clearPosition } = usePlaybackResume(activeId);
+  const { positions: playbackPositions, getPosition, clearPosition } = usePlaybackResume(activeId);
 
   const {
     active,
@@ -96,6 +105,8 @@ export default function App() {
     goHome: storeGoHome,
     handleDisconnect: storeHandleDisconnect,
   } = useAppStore();
+  const hydrateBrowseFilters = useAppStore((s) => s.hydrateBrowseFilters);
+  const persistBrowseFilters = useAppStore((s) => s.persistBrowseFilters);
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
@@ -105,16 +116,42 @@ export default function App() {
   const appStrings = strings[appLang];
   const [pinAsk, setPinAsk] = useState<string | null>(null);
   const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [showClearPrompt, setShowClearPrompt] = useState(false);
   const updater = useUpdater({ notify: true, autoCheck: true });
   const [settingsInitialGroup, setSettingsInitialGroup] = useState<"profiles" | "account" | "appearance" | "epg" | "playback" | "video" | "parental" | "updates" | undefined>(undefined);
+  const [settingsReturn, setSettingsReturn] = useState<Screen | null>(null);
+  const pushScreen = useAppStore((s) => s.pushScreen);
+  const popScreen = useAppStore((s) => s.popScreen);
   const handleViewUpdate = useCallback(() => {
     setSettingsInitialGroup("updates");
-    setScreen("settings");
-  }, [setScreen]);
+    setSettingsReturn(screen);
+    pushScreen("settings");
+  }, [screen, pushScreen]);
   const handleOpenSettings = useCallback(() => {
     setSettingsInitialGroup(undefined);
-    setScreen("settings");
-  }, [setScreen]);
+    setSettingsReturn(screen);
+    pushScreen("settings");
+  }, [screen, pushScreen]);
+  const handleCloseSettings = useCallback(() => {
+    const st = useAppStore.getState();
+    if (st.screenHistory.length > 0 || st.prevScreen) {
+      popScreen();
+    } else if (settingsReturn) {
+      setScreen(settingsReturn);
+    } else {
+      setScreen("home");
+    }
+    setSettingsReturn(null);
+    setSettingsInitialGroup(undefined);
+  }, [settingsReturn, popScreen, setScreen]);
+
+  const pinDialogRef = useRef<HTMLDivElement>(null);
+  const clearDialogRef = useRef<HTMLDivElement>(null);
+  const helpDialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(!!pinAsk, () => { setPinAsk(null); setPinError(null); }, pinDialogRef);
+  useFocusTrap(showClearPrompt, () => setShowClearPrompt(false), clearDialogRef);
+  useFocusTrap(helpOpen, () => setHelpOpen(false), helpDialogRef);
 
   useBlockBrowserHotkeys(true);
   const online = useOnline();
@@ -183,9 +220,41 @@ export default function App() {
     setScreen,
   ]);
 
+  // 0.8 Persist browse filters per profile+contentMode
+  const browseHydratedRef = useRef<Set<string>>(new Set());
+  const prevBrowseModeRef = useRef<ContentMode | null>(null);
+  useEffect(() => {
+    if (!profilesReady || !activeId) return;
+    if (contentMode === "live") return;
+    const key = `${activeId}:${contentMode}`;
+    void hydrateBrowseFilters(activeId, contentMode as "movie" | "series").finally(() => {
+      browseHydratedRef.current.add(key);
+      prevBrowseModeRef.current = contentMode;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profilesReady, activeId, contentMode]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    if (contentMode === "live") return;
+    const key = `${activeId}:${contentMode}`;
+    if (!browseHydratedRef.current.has(key)) return;
+    // skip persist when contentMode just changed — hydrate will restore correct filters
+    if (prevBrowseModeRef.current !== contentMode) {
+      prevBrowseModeRef.current = contentMode;
+      return;
+    }
+    persistBrowseFilters(activeId, contentMode);
+  }, [activeId, contentMode, smartFilter, category, search, persistBrowseFilters]);
+
   const handleSwitchProfile = useCallback(
     async (id: string) => {
       if (id === activeId) return;
+      // prevent persist of reset defaults overwriting old profile's saved filters
+      if (activeId) {
+        browseHydratedRef.current.delete(`${activeId}:movie`);
+        browseHydratedRef.current.delete(`${activeId}:series`);
+      }
       disconnect();
       setActive(null);
       setDetailTarget(null);
@@ -193,6 +262,7 @@ export default function App() {
       setSmartFilter("all");
       setCategory(null);
       setSearch("");
+      useAppStore.setState({ screenHistory: [], prevScreen: null });
       setScreen("home");
       await switchProfile(id);
     },
@@ -221,10 +291,11 @@ export default function App() {
         el?.select();
       },
       Escape: () => {
+        if (cmdOpen || helpOpen || pinAsk || showClearPrompt) return;
         if (screen === "watch") handleExitWatch();
         else if (screen === "detail") backToBrowse();
         else if (screen === "browse") goHome();
-        else if (screen === "settings") setScreen("home");
+        else if (screen === "settings") handleCloseSettings();
       },
       f: () => {
         // favorite toggle: detail > watch > browse poster (ignore in browse live)
@@ -315,40 +386,50 @@ export default function App() {
         url: channel.url,
         seriesId,
       });
-      setScreen("watch");
+      pushScreen("watch");
     },
-    [record, setActive, setScreen, detailTarget]
+    [record, setActive, pushScreen, detailTarget]
   );
 
   // Exiting the player returns to the previous screen and forces the EPG
   // guide to refresh so now/next data on the underlying page is current.
   const handleExitWatch = useCallback(() => {
-    setScreen(detailTarget ? "detail" : "browse");
+    const st = useAppStore.getState();
+    if (st.screenHistory.length > 0 || st.prevScreen) {
+      popScreen();
+    } else {
+      setScreen(detailTarget ? "detail" : "browse");
+    }
     void refreshEpg(true);
-  }, [setScreen, detailTarget, refreshEpg]);
+  }, [detailTarget, popScreen, setScreen, refreshEpg]);
 
   const openMovieDetail = useCallback(
     (channel: Channel) => {
       setDetailTarget({ kind: "movie", channel });
       loadMovieDetail(channel.id.replace(/^movie:/, ""));
-      setScreen("detail");
+      pushScreen("detail");
     },
-    [loadMovieDetail, setDetailTarget, setScreen]
+    [loadMovieDetail, setDetailTarget, pushScreen]
   );
 
   const openSeriesDetail = useCallback(
     (s: Series) => {
       setDetailTarget({ kind: "series", series: s });
       openSeries(s);
-      setScreen("detail");
+      pushScreen("detail");
     },
-    [openSeries, setDetailTarget, setScreen]
+    [openSeries, setDetailTarget, pushScreen]
   );
 
   const backToBrowse = useCallback(() => {
     setDetailTarget(null);
-    setScreen("browse");
-  }, [setDetailTarget, setScreen]);
+    const st = useAppStore.getState();
+    if (st.screenHistory.length > 0 || st.prevScreen) {
+      popScreen();
+    } else {
+      setScreen("browse");
+    }
+  }, [setDetailTarget, popScreen, setScreen]);
 
   const handleSmartFilter = useCallback(
     (f: typeof smartFilter) => {
@@ -365,6 +446,8 @@ export default function App() {
           return;
         }
         setPinAsk(c);
+        setPinError(null);
+        setPinInput("");
         return;
       }
       setCategory(c);
@@ -393,6 +476,58 @@ export default function App() {
             favoriteIds,
           }),
     [contentMode, smartFilter, category, search, sortKey, movies, series, history, favoriteIds]
+  );
+
+  const continueCards = useMemo(() => {
+    void playbackPositions;
+    const filtered = history.filter((h) => {
+      const pos = getPosition(h.id) ?? (h.position !== undefined && h.duration !== undefined ? { position: h.position, duration: h.duration } : undefined);
+      if (!pos) return false;
+      return isResumableApp(pos.position, pos.duration);
+    });
+    return filtered.slice(0, 3).map((h) => ({ id: h.id, name: h.name, poster: h.poster }));
+  }, [history, getPosition, playbackPositions]);
+
+  const favoriteCards = useMemo(() => {
+    const movieFav = movies.filter((m) => favoriteIds.has(m.id)).map((m) => ({ id: m.id, name: m.name, poster: m.logo }));
+    const seriesFav = series.filter((s) => favoriteIds.has(`series:${s.id}`)).map((s) => ({ id: s.id, name: s.name, poster: s.cover }));
+    return [...movieFav, ...seriesFav].slice(0, 6);
+  }, [movies, series, favoriteIds]);
+
+  const handleOpenContinueCard = useCallback(
+    (id: string) => {
+      const h = history.find((x) => x.id === id);
+      if (h?.kind === "movie") {
+        const m = movies.find((x) => x.id === id);
+        if (m) { openMovieDetail(m); return; }
+        if (h) openMovieDetail({ id: h.id, name: h.name, url: h.url, logo: h.poster, group: "Continue watching", kind: "movie" });
+        return;
+      }
+      if (h?.kind === "episode") {
+        const sid = (h as unknown as { seriesId?: string }).seriesId;
+        if (sid) {
+          const s = series.find((x) => x.id === sid);
+          if (s) { openSeriesDetail(s); return; }
+        }
+        watch({ id: h.id, name: h.name, url: h.url, logo: h.poster, kind: "episode", group: "" });
+        return;
+      }
+      const m = movies.find((x) => x.id === id);
+      if (m) { openMovieDetail(m); return; }
+      const s = series.find((x) => x.id === id);
+      if (s) openSeriesDetail(s);
+    },
+    [history, movies, series, watch, openMovieDetail, openSeriesDetail]
+  );
+
+  const handleOpenFavoriteCard = useCallback(
+    (id: string) => {
+      const m = movies.find((x) => x.id === id);
+      if (m) { openMovieDetail(m); return; }
+      const s = series.find((x) => x.id === id);
+      if (s) openSeriesDetail(s);
+    },
+    [movies, series, openMovieDetail, openSeriesDetail]
   );
 
   const handleTogglePosterFavorite = useCallback(
@@ -424,7 +559,6 @@ export default function App() {
     [removeHistory, clearPosition]
   );
 
-  const [showClearPrompt, setShowClearPrompt] = useState(false);
   const handleClearWatched = useCallback(() => {
     const ids = history
       .filter((h) => (contentMode === "movie" ? h.kind === "movie" : h.kind === "episode"))
@@ -498,6 +632,19 @@ export default function App() {
     },
     [contentMode, smartFilter, history, movies, series, watch, openMovieDetail, openSeriesDetail]
   );
+
+  // 1.6 — Compute next episode for auto-next countdown in Player
+  // When active is an episode, find its index in the flattened seasons list
+  // (seasons corresponds to currently opened series detail). If not found,
+  // fallback to null (no auto-next). History record already handles seriesId.
+  const nextChannel = useMemo(() => {
+    if (!active || active.kind !== "episode") return null;
+    if (seasons.length === 0) return null;
+    const flat = seasons.flatMap((s) => s.episodes);
+    const idx = flat.findIndex((e) => e.id === active.id);
+    if (idx === -1 || idx + 1 >= flat.length) return null;
+    return flat[idx + 1] ?? null;
+  }, [active, seasons]);
 
   const paletteCommands = useMemo(
     () => [
@@ -607,8 +754,30 @@ export default function App() {
         expDateFormatted={account?.expDateFormatted ?? null}
         expTimestamp={account?.expTimestamp ?? null}
         isTrial={account?.isTrial ?? false}
+        continueItems={continueCards}
+        favoriteItems={favoriteCards}
+        onOpenContinue={handleOpenContinueCard}
+        onOpenFavorite={handleOpenFavoriteCard}
+        onSearchOpen={() => setCmdOpen(true)}
+        onHelpOpen={() => setHelpOpen(true)}
+        getPosition={getPosition}
       />
       {globalSearchOverlay}
+      {helpOpen && (
+        <div className="cmd-palette-backdrop" onClick={() => setHelpOpen(false)}>
+          <div ref={helpDialogRef} className="cmd-palette" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: "8px 0", fontSize: 14 }}>Keyboard shortcuts</h3>
+            <div style={{ fontSize: 12, lineHeight: "1.7", opacity: 0.9 }}>
+              / Focus search · Esc Back/Home · 1/2/3 Home tiles · Ctrl+K Palette · ? Help
+              <br />
+              Player: Space/k Play · m Mute · f Fullscreen · p PiP · z Fit · c Captions · ,/. Speed · ←/→ Seek · ↑/↓ Volume
+              <br />
+              Grid: hover ☆ Favorite · continue ✕ Remove
+            </div>
+            <button type="button" className="change-source" style={{ marginTop: 10 }} onClick={() => setHelpOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
       </>
     );
   }
@@ -624,7 +793,7 @@ export default function App() {
         onSwitch={handleSwitchProfile}
         onCreate={createProfile}
         onDelete={removeProfile}
-        onBack={() => setScreen("home")}
+        onBack={handleCloseSettings}
         account={account}
         username={xtreamCreds?.username ?? null}
         onDisconnect={handleDisconnect}
@@ -648,6 +817,8 @@ export default function App() {
         zapList={channels}
         onZap={setActive}
         getEpgForChannel={getEpgForChannel}
+        nextChannel={nextChannel}
+        onNext={watch}
       />
       {globalSearchOverlay}
       </>
@@ -704,6 +875,9 @@ export default function App() {
           onHome={goHome}
           getEpgForChannel={getEpgForChannel}
           epgLoading={epgLoading}
+          onSearchOpen={() => setCmdOpen(true)}
+          onHelpOpen={() => setHelpOpen(true)}
+          profileId={activeId}
         />
         <main className="main">
           {isLiveLoading && <ColorBar className="colorbar--loading" />}
@@ -767,6 +941,28 @@ export default function App() {
           </div>
         )}
         {!online && <div className="banner banner-error">Offline — check your connection.</div>}
+        <nav className="browse-crumbs" aria-label="Breadcrumb">
+          <button type="button" className="crumb" onClick={goHome}>Home</button>
+          <span className="crumb-sep" aria-hidden>▸</span>
+          <span className="crumb crumb--current">{contentMode === "movie" ? appStrings.movies : contentMode === "series" ? appStrings.series : appStrings.live}</span>
+          <span className="crumb-sep" aria-hidden>▸</span>
+          <span className="crumb crumb--current">{smartFilter === "favorites" ? appStrings.favorites : smartFilter === "continue" ? appStrings.continue : appStrings.all}</span>
+          {category ? (
+            <>
+              <span className="crumb-sep" aria-hidden>▸</span>
+              <button type="button" className="crumb" onClick={() => setCategory(null)} title="Clear category">{category}</button>
+            </>
+          ) : null}
+          {search.trim() && (
+            <>
+              <span className="crumb-sep" aria-hidden>▸</span>
+              <span className="crumb crumb--search">
+                Search: {search.trim()}
+                <button type="button" className="crumb-clear" onClick={() => setSearch("")} aria-label="Clear search">×</button>
+              </span>
+            </>
+          )}
+        </nav>
         <header className="browse-header">
           <h1 className="browse-title">{contentMode === "movie" ? "Movies" : "Series"}</h1>
           <div className="browse-header-actions">
@@ -794,11 +990,13 @@ export default function App() {
         </header>
         {globalSearchOverlay}
         {pinAsk && (
-          <div className="cmd-palette-backdrop" onClick={() => setPinAsk(null)}>
+          <div className="cmd-palette-backdrop" onClick={() => { setPinAsk(null); setPinError(null); }}>
             <div
+              ref={pinDialogRef}
               className="cmd-palette"
               role="dialog"
               aria-modal="true"
+              aria-label="Enter PIN"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 style={{ margin: "8px 0" }}>🔒 Locked: {pinAsk}</h3>
@@ -806,20 +1004,26 @@ export default function App() {
                 type="password"
                 placeholder="Enter PIN"
                 value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
+                onChange={(e) => { setPinInput(e.target.value); if (pinError) setPinError(null); }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     if (pinInput === parental.pin) {
                       setCategory(pinAsk);
                       setPinAsk(null);
                       setPinInput("");
+                      setPinError(null);
                     } else {
-                      alert("Wrong PIN");
+                      setPinError("Wrong PIN — try again");
                     }
                   }
                 }}
+                aria-invalid={pinError ? "true" : undefined}
+                aria-describedby={pinError ? "pin-error" : undefined}
                 autoFocus
               />
+              {pinError && (
+                <p id="pin-error" className="pin-error shake" role="alert">{pinError}</p>
+              )}
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                 <button
                   type="button"
@@ -829,12 +1033,13 @@ export default function App() {
                       setCategory(pinAsk!);
                       setPinAsk(null);
                       setPinInput("");
-                    } else alert("Wrong PIN");
+                      setPinError(null);
+                    } else setPinError("Wrong PIN — try again");
                   }}
                 >
                   Unlock
                 </button>
-                <button type="button" className="pc-btn" onClick={() => setPinAsk(null)}>
+                <button type="button" className="pc-btn" onClick={() => { setPinAsk(null); setPinError(null); }}>
                   Cancel
                 </button>
               </div>
@@ -843,7 +1048,7 @@ export default function App() {
         )}
         {showClearPrompt && (
           <div className="cmd-palette-backdrop" style={{alignItems:"center", paddingTop:0}} onClick={() => setShowClearPrompt(false)}>
-            <div className="cmd-palette" role="dialog" aria-modal="true" onClick={(e)=> e.stopPropagation()}>
+            <div ref={clearDialogRef} className="cmd-palette" role="dialog" aria-modal="true" aria-label="Clear Continue Watching confirmation" onClick={(e)=> e.stopPropagation()}>
               <h3 style={{margin:"8px 0", fontSize:15, fontWeight:700}}>Clear Continue Watching?</h3>
               <p style={{margin:"0 0 6px", fontSize:13, lineHeight:1.5, opacity:0.85}}>This will remove <strong>{history.filter(h=> (contentMode==="movie"?h.kind==="movie":h.kind==="episode")).length} items</strong> from your Continue Watching and erase saved positions for this profile. This cannot be undone.</p>
               <div style={{display:"flex", gap:8, marginTop:14}}>
@@ -856,6 +1061,7 @@ export default function App() {
         {helpOpen && (
           <div className="cmd-palette-backdrop" onClick={() => setHelpOpen(false)}>
             <div
+              ref={helpDialogRef}
               className="cmd-palette"
               role="dialog"
               aria-modal="true"
@@ -904,6 +1110,7 @@ export default function App() {
                 showRemove={smartFilter === "continue"}
                 favoriteIds={favoriteIds}
                 onToggleFavorite={handleTogglePosterFavorite}
+                getPosition={getPosition}
                 emptyText={
                   smartFilter === "favorites"
                     ? "No favorites yet — tap ★ to keep it here."

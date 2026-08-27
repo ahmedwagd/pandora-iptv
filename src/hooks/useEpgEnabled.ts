@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getValue, setValue } from "../lib/store";
 import { StorageKeys } from "../lib/storageKeys";
 
-const DEFAULT_ENABLED = true;
+const DEFAULT_ENABLED = false;
 
 /** Persisted preference for whether the EPG guide is fetched/displayed. */
 export function useEpgEnabled() {

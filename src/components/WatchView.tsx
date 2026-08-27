@@ -15,6 +15,9 @@ interface WatchViewProps {
   zapList?: Channel[];
   onZap?: (ch: Channel) => void;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
+  /** 1.6 — next episode for auto-next countdown */
+  nextChannel?: Channel | null;
+  onNext?: (ch: Channel) => void;
 }
 
 function formatEpgTime(p: EpgProgramme): string {
@@ -34,6 +37,8 @@ export function WatchView({
   zapList,
   onZap,
   getEpgForChannel,
+  nextChannel,
+  onNext,
 }: WatchViewProps) {
   const { has: hasRem, add: addRem, remove: remRem } = useEpgReminders(profileId);
   const [localEpg, setLocalEpg] = useState<EpgProgramme[]>([]);
@@ -119,7 +124,17 @@ export function WatchView({
         </div>
       </header>
       <div className="watch-stage">
-        <Player channel={playingChannel} onBack={onBack} profileId={profileId} zapList={zapList} onZap={wrappedOnZap} getEpgForChannel={getEpgForChannel} />
+        <Player
+          channel={playingChannel}
+          onBack={onBack}
+          profileId={profileId}
+          zapList={zapList}
+          onZap={wrappedOnZap}
+          getEpgForChannel={getEpgForChannel}
+          nextEpisode={nextChannel ?? null}
+          onNextEpisode={onNext}
+          autoNext={nextChannel ? { next: nextChannel, countdown: 5 } : undefined}
+        />
       </div>
       {progs.length > 0 && (
         <div className="watch-epg-panel">

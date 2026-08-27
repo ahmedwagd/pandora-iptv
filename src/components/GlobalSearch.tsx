@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { RankedItem } from "../lib/searchIndex";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 interface Cmd {
   id: string;
@@ -34,6 +35,8 @@ export function GlobalSearch({
   commands,
 }: GlobalSearchProps) {
   const [active, setActive] = useState(0);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(open, onClose, paletteRef);
 
   const filteredCmds = useMemo(() => {
     const t = query.trim().toLowerCase();
@@ -55,10 +58,7 @@ export function GlobalSearch({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
+      // Escape is handled by useFocusTrap (topmost only)
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setActive((a) => Math.min(flat.length - 1, a + 1));
@@ -97,6 +97,7 @@ export function GlobalSearch({
   return (
     <div className="cmd-palette-backdrop" onClick={onClose} role="presentation">
       <div
+        ref={paletteRef}
         className="cmd-palette gs-palette"
         role="dialog"
         aria-modal="true"

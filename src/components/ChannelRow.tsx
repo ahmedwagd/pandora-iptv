@@ -73,8 +73,8 @@ export const ChannelRow = memo(function ChannelRow({
   const epg = getEpgForChannel?.(ch.id);
   const saved = getPosition?.(ch.id);
   const resumable = saved ? isResumableRow(saved.position, saved.duration) : false;
-  void hasReminder;
-  void onToggleReminder;
+  const nowProg = epg?.now;
+  const isReminder = nowProg ? (hasReminder?.(ch.id, nowProg.startTime) ?? false) : false;
 
   return (
     <li
@@ -121,6 +121,22 @@ export const ChannelRow = memo(function ChannelRow({
               <span className="ch-now-title" title={epg.now.title}>
                 {epg.now.title}
               </span>
+              {nowProg && (
+                <button
+                  type="button"
+                  className={`epg-remind-row epg-row-remind ${isReminder ? "is-on" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (nowProg) onToggleReminder?.(ch, nowProg);
+                  }}
+                  aria-pressed={isReminder}
+                  aria-label={isReminder ? "Remove reminder" : "Remind me"}
+                  title="Remind me"
+                  style={{ fontSize: 14 } as React.CSSProperties}
+                >
+                  {isReminder ? "🔔" : "⏰"}
+                </button>
+              )}
             </div>
             <div className="ch-progress" aria-hidden>
               <span className="ch-progress-fill" style={{ width: `${progPct(epg.now, now) * 100}%` }} />

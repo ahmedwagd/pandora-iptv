@@ -4,6 +4,8 @@ import { strings } from "../i18n";
 import type { ContentMode } from "../types";
 import { ColorBar } from "./ColorBar";
 import { ThemeToggle } from "../theme";
+import { MediaImage } from "./MediaImage";
+import type { PosterCard } from "./PosterGrid";
 
 function useNow(intervalMs = 1000): Date {
   const [now, setNow] = useState(() => new Date());
@@ -29,11 +31,35 @@ interface HomeProps {
   expDateFormatted?: string | null;
   expTimestamp?: number | null;
   isTrial?: boolean;
+  continueItems?: PosterCard[];
+  favoriteItems?: PosterCard[];
+  onOpenContinue?: (id: string) => void;
+  onOpenFavorite?: (id: string) => void;
+  onSearchOpen?: () => void;
+  onHelpOpen?: () => void;
+  getPosition?: (id: string) => { position: number; duration: number } | undefined;
 }
 
 function countText(count: number, loading: boolean): string {
   if (loading) return "…";
   return count.toLocaleString();
+}
+
+function isResumableHome(pos: number, dur: number): boolean {
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || dur <= 0) return false;
+  if (pos < 10) return false;
+  if (dur - pos < 15) return false;
+  const pct = pos / dur;
+  return pct > 0.01 && pct < 0.985;
+}
+
+function fmtResumeHome(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return "00:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 const TILES: {
@@ -153,6 +179,16 @@ export function Home(props: HomeProps) {
           </div>
         </div>
         <div className="home-header-actions">
+          {props.onSearchOpen && (
+            <button className="home-settings" onClick={props.onSearchOpen} aria-label="Search">
+              🔍 Search
+            </button>
+          )}
+          {props.onHelpOpen && (
+            <button className="home-settings" onClick={props.onHelpOpen} aria-label="Help">
+              ? Help
+            </button>
+          )}
           <ThemeToggle />
           <button className="home-settings" onClick={onSettings} aria-label={s.settings}>
             ⚙ {s.settings}
@@ -170,9 +206,11 @@ export function Home(props: HomeProps) {
               style={{ "--tile-bg": t.bg, "--tile-accent": t.accent } as React.CSSProperties}
               data-ch={`CH 0${idx + 1}`}
               data-num={`0${idx + 1}`}
+              data-key={`${idx + 1}`}
               onClick={() => onSelect(t.mode)}
               aria-label={`${s[t.labelKey]} — ${countText(t.count(props), isTileLoading)} ${s[t.unitKey]}`}
               aria-busy={isTileLoading}
+              title={`Press ${idx + 1}`}
             >
               <div className="home-tile-icon">{t.icon}</div>
               <div className="home-tile-label">{s[t.labelKey]}</div>
@@ -188,10 +226,110 @@ export function Home(props: HomeProps) {
                   </>
                 )}
               </div>
+              <span className="home-tile-key" aria-hidden>
+                Press {idx + 1}
+              </span>
               <ColorBar className="home-tile-bar" />
             </button>
           );
         })}
+      </div>
+
+      {/* Home rails: Continue Watching + Favorites */}
+      <div className="home-rails">
+        <section className="home-rail" aria-label="Continue Watching">
+          <h2 className="home-rail-title">Continue Watching</h2>
+          {props.continueItems && props.continueItems.length > 0 ? (
+            <div className="home-rail-row">
+              {props.continueItems.slice(0, 3).map((card) => {
+                const saved = props.getPosition?.(card.id);
+                const resumable = saved ? isResumableHome(saved.position, saved.duration) : false;
+                const pct = resumable && saved ? Math.min(100, Math.max(0, (saved.position / saved.duration) * 100)) : 0;
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    className="home-rail-card"
+                    onClick={() => props.onOpenContinue?.(card.id)}
+                    aria-label={card.name}
+                  >
+                    <div className="home-rail-thumb">
+                      <MediaImage
+                        src={card.poster}
+                        alt={card.name}
+                        className="home-rail-img"
+                        placeholderClassName="home-rail-placeholder"
+                        fallback={card.name[0] ?? "?"}
+                      />
+                      {resumable && saved && (
+                        <div className="ch-progress home-rail-progress" aria-hidden>
+                          <span className="ch-progress-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                    </div>
+                    <span className="home-rail-name" title={card.name}>
+                      {card.name}
+                    </span>
+                    {resumable && saved && (
+                      <span className="home-rail-resume">
+                        ↺ {fmtResumeHome(saved.position)} / {fmtResumeHome(saved.duration)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="home-rail-empty">
+              <span>No continue items — </span>
+              <button type="button" className="home-rail-cta" onClick={() => onSelect("movie")}>
+                Browse Movies
+              </button>
+            </div>
+          )}
+        </section>
+
+        <section className="home-rail" aria-label="Favorites">
+          <h2 className="home-rail-title">Favorites</h2>
+          {props.favoriteItems && props.favoriteItems.length > 0 ? (
+            <div className="home-rail-row">
+              {props.favoriteItems.slice(0, 6).map((card) => {
+                const saved = props.getPosition?.(card.id);
+                const resumable = saved ? isResumableHome(saved.position, saved.duration) : false;
+                const pct = resumable && saved ? Math.min(100, Math.max(0, (saved.position / saved.duration) * 100)) : 0;
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    className="home-rail-card"
+                    onClick={() => props.onOpenFavorite?.(card.id)}
+                    aria-label={card.name}
+                  >
+                    <div className="home-rail-thumb">
+                      <MediaImage
+                        src={card.poster}
+                        alt={card.name}
+                        className="home-rail-img"
+                        placeholderClassName="home-rail-placeholder"
+                        fallback={card.name[0] ?? "?"}
+                      />
+                      {resumable && saved && (
+                        <div className="ch-progress home-rail-progress" aria-hidden>
+                          <span className="ch-progress-fill" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
+                    </div>
+                    <span className="home-rail-name" title={card.name}>
+                      {card.name}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="home-rail-empty">No favorites yet — tap ★</div>
+          )}
+        </section>
       </div>
 
       {(profileName || username || expDateFormatted) && (

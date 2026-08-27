@@ -116,6 +116,11 @@ export const strings = {
     releaseNotes: "Release notes",
     updateDismissed: "Dismissed",
     clearDismiss: "Show again",
+    noUpdateAvailable: "No update available",
+    downloadFailed: "Download failed",
+    restartFailed: "Restart failed",
+    notificationTitle: "PandoraIPTV {{version}} available",
+    notificationBody: "Update {{current}} → {{latest}}",
   },
   ar: {
     home: "الرئيسية",
@@ -232,6 +237,11 @@ export const strings = {
     releaseNotes: "ملاحظات الإصدار",
     updateDismissed: "تم التجاهل",
     clearDismiss: "إظهار مجددًا",
+    noUpdateAvailable: "لا يوجد تحديث متاح",
+    downloadFailed: "فشل التنزيل",
+    restartFailed: "فشل إعادة التشغيل",
+    notificationTitle: "يتوفر تحديث PandoraIPTV {{version}}",
+    notificationBody: "تحديث {{current}} → {{latest}}",
   },
 } as const;
 export type Lang = keyof typeof strings;

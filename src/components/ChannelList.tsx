@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useEpgReminders } from "../hooks/useEpgReminders";
 import type { Channel } from "../types";
 import type { EpgProgramme } from "../types/epg";
@@ -6,6 +6,8 @@ import { EmptyState } from "./shared/EmptyState";
 import { usePlaybackResume } from "../hooks/usePlaybackResume";
 import { ChannelRow, isResumableForList } from "./ChannelRow";
 import { VIRTUAL_THRESHOLD, VirtualChannelList } from "./VirtualChannelList";
+import { getValue, setValue } from "../lib/store";
+import { channelListFiltersKey } from "../lib/storageKeys";
 
 interface ChannelListProps {
   channels: Channel[];
@@ -57,10 +59,60 @@ export function ChannelList({
   const [epgSearch, setEpgSearch] = useState(false);
   const [cat, setCat] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const hasHydratedRef = useRef(false);
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
+
+  // 0.8 Persist cat+search (+group) per profile via plugin-store + localStorage
+  useEffect(() => {
+    if (!profileId) return;
+    hasHydratedRef.current = false;
+    let cancelled = false;
+    (async () => {
+      const key = channelListFiltersKey(profileId);
+      let snap: { search?: string; cat?: string | null; group?: string } | undefined;
+      try {
+        snap = await getValue<typeof snap>(key);
+      } catch {}
+      if (!snap) {
+        try {
+          const raw =
+            localStorage.getItem(`panora:${key}`) ?? localStorage.getItem(key);
+          if (raw) snap = JSON.parse(raw) as typeof snap;
+        } catch {}
+      }
+      if (cancelled) return;
+      if (snap) {
+        if (typeof snap.search === "string") setSearch(snap.search);
+        if (snap.cat === null || typeof snap.cat === "string") setCat(snap.cat ?? null);
+        if (typeof snap.group === "string") setGroup(snap.group);
+      } else {
+        // no persisted data — reset to defaults for new profile
+        setSearch("");
+        setCat(null);
+        setGroup("All");
+      }
+      hasHydratedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  useEffect(() => {
+    if (!profileId) return;
+    if (!hasHydratedRef.current) return;
+    const key = channelListFiltersKey(profileId);
+    const snap = { search, cat, group };
+    void setValue(key, snap).catch(() => {});
+    try {
+      const raw = JSON.stringify(snap);
+      localStorage.setItem(`panora:${key}`, raw);
+      localStorage.setItem(key, raw);
+    } catch {}
+  }, [profileId, search, cat, group]);
   const {
     has: hasReminder,
     add: addReminder,

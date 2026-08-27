@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { notifyUpdateAvailable } from "../lib/updaterNotify";
 import { useUpdaterPrefs, DEFAULT_INTERVAL_MS } from "./useUpdaterPrefs";
+import { useLang } from "./useLang";
+import { strings } from "../i18n";
 
 export interface UpdateInfo {
   available: boolean;
@@ -20,6 +22,8 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
   const prefs = useUpdaterPrefs();
   const effectiveInterval = intervalMs ?? prefs.intervalMs ?? DEFAULT_INTERVAL_MS;
   const effectiveAutoCheck = typeof opts.autoCheck === "boolean" ? opts.autoCheck : prefs.autoCheckEnabled;
+  const { lang } = useLang();
+  const s = strings[lang];
 
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
@@ -71,7 +75,7 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
           const dismissed = dismissedRef.current;
           const shouldNotify = withNotify && dismissed !== next.latestVersion;
           if (shouldNotify) {
-            void notifyUpdateAvailable(next);
+            void notifyUpdateAvailable(next, lang);
           }
         } else if (update) {
           setInfo({ available: false, currentVersion: update.currentVersion });
@@ -112,7 +116,7 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       const { check } = await import("@tauri-apps/plugin-updater");
       const update = await check();
       if (!update?.available) {
-        setError("No update available");
+        setError(s.noUpdateAvailable);
         setDownloading(false);
         setProgress(null);
         return;
@@ -152,12 +156,12 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       setNeedsRestart(true);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || "Download failed");
+      setError(msg || s.downloadFailed);
       setProgress(null);
     } finally {
       setDownloading(false);
     }
-  }, [downloading]);
+  }, [downloading, s.downloadFailed]);
 
   const restart = useCallback(async () => {
     if (typeof window === "undefined" || !("__TAURI__" in window)) return;
@@ -166,9 +170,9 @@ export function useUpdater(opts: UseUpdaterOptions = {}) {
       await relaunch();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || "Restart failed");
+      setError(msg || s.restartFailed);
     }
-  }, []);
+  }, [s.restartFailed]);
 
   const dismiss = useCallback(() => {
     const v = info?.latestVersion ?? null;

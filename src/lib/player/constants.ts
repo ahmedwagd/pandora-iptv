@@ -5,6 +5,8 @@
 export const PLAYER_MAX_MEDIA_RECOVER = 2;
 export const PLAYER_MAX_BUFFER_LENGTH_SEC = 30;
 export const PLAYER_ZAP_HIDE_MS = 4000;
+export const PLAYER_ZAP_HINT_MS = 2000;
+export const PLAYER_ZAP_HINT_KEY = "panora:zapHintShown";
 export const PLAYER_SEEK_HINT_DURATION_MS = 520;
 export const PLAYER_SEEK_HINT_REMOVE_MS = 560;
 

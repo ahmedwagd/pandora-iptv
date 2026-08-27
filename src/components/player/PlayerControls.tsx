@@ -424,6 +424,16 @@ export function PlayerControls({
     return () => playerEl.removeEventListener("click", handler);
   }, [guardedToggle, channel]);
 
+  /**
+   * 1.4 — Single source for player shortcuts (when video focused/playing):
+   * m mute, k/Space play, f fullscreen only, p PiP, z cycleFit, c caption toggle,
+   * ,/. speed, ←/→ seek, ↑/↓ zap (live) else volume.
+   * Shift+↑/↓ is reserved for volume; plain ↑/↓ zaps when isLive.
+   * App.tsx 'f' favorite handler is global but no-ops in watch screen
+   * so this f handler owns fullscreen while watching.
+   * Player.tsx also listens for ↑/↓ zap globally with same shift gate
+   * (if shiftKey return) — both gates match to avoid double-zap.
+   */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -495,9 +505,15 @@ export function PlayerControls({
           break;
         case "arrowup":
           if (onZapPrev && (channel?.kind == null || channel?.kind === "live")) {
-            e.preventDefault();
-            onZapPrev();
-            scheduleHide();
+            if (e.shiftKey) {
+              e.preventDefault();
+              v.volume = Math.min(1, v.volume + 0.1);
+              v.muted = false;
+            } else {
+              e.preventDefault();
+              onZapPrev();
+              scheduleHide();
+            }
           } else {
             e.preventDefault();
             v.volume = Math.min(1, v.volume + 0.1);
@@ -506,9 +522,15 @@ export function PlayerControls({
           break;
         case "arrowdown":
           if (onZapNext && (channel?.kind == null || channel?.kind === "live")) {
-            e.preventDefault();
-            onZapNext();
-            scheduleHide();
+            if (e.shiftKey) {
+              e.preventDefault();
+              v.volume = Math.max(0, v.volume - 0.1);
+              if (v.volume === 0) v.muted = true;
+            } else {
+              e.preventDefault();
+              onZapNext();
+              scheduleHide();
+            }
           } else {
             e.preventDefault();
             v.volume = Math.max(0, v.volume - 0.1);

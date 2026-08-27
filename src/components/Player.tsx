@@ -16,7 +16,7 @@ import {
 } from "../lib/streamPolicy";
 import { createHlsLoaderClass } from "../lib/hls/loader";
 import { zapNeighbors, zapStep } from "../lib/zap";
-import { PLAYER_MAX_BUFFER_LENGTH_SEC, PLAYER_MAX_MEDIA_RECOVER, PLAYER_ZAP_HIDE_MS } from "../lib/player/constants";
+import { PLAYER_MAX_BUFFER_LENGTH_SEC, PLAYER_MAX_MEDIA_RECOVER, PLAYER_ZAP_HIDE_MS, PLAYER_ZAP_HINT_MS, PLAYER_ZAP_HINT_KEY } from "../lib/player/constants";
 import { PlayerTimers } from "../lib/player/timers";
 import { ZapOverlay } from "./player/ZapOverlay";
 import type { EpgProgramme } from "../types/epg";
@@ -29,6 +29,12 @@ interface PlayerProps {
   zapList?: Channel[];
   onZap?: (ch: Channel) => void;
   getEpgForChannel?: (id: string) => { now?: EpgProgramme; next?: EpgProgramme } | undefined;
+  /** 1.6 auto-next: next episode to play when current episode ends */
+  nextEpisode?: Channel | null;
+  onNextEpisode?: (ch: Channel) => void;
+  /** Alternative shape per spec: autoNext + onEnded */
+  autoNext?: { next: Channel | null; countdown: number };
+  onEnded?: () => void;
 }
 
 type PlayerStatus = "idle" | "loading" | "buffering" | "reconnecting" | "error";
@@ -43,7 +49,68 @@ function getSources(ch: Channel): string[] {
   return [ch.url, ...(ch.altUrls ?? [])].filter(Boolean);
 }
 
-export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null, zapList, onZap, getEpgForChannel }: PlayerProps) {
+/**
+ * 1.5 Friendly error mapping — keeps overlay copy user-friendly while
+ * diagnostics panel retains technical details. Host / HTTP code / HLS
+ * details are stored separately in `detailedDiag` and only shown via
+ * "Show Details".
+ */
+export function friendlyError(
+  dataOrCode: unknown,
+  httpCodeOrHost?: number | string,
+  hostHint?: string,
+): string {
+  // Allow overloaded calls: friendlyError(data, httpCode, hostHint) OR friendlyError(httpCode, details)
+  let httpCode: number | undefined;
+  let detailsStr: string | undefined;
+  // If first arg is a number / undefined and second is string/undefined, treat as (httpCode, details)
+  if (typeof dataOrCode === "number" || dataOrCode == null) {
+    httpCode = dataOrCode as number | undefined;
+    detailsStr = typeof httpCodeOrHost === "string" ? (httpCodeOrHost as string) : undefined;
+  } else if (typeof dataOrCode === "object" && dataOrCode !== null) {
+    const d = dataOrCode as { type?: string; details?: string; networkDetails?: { message?: string } };
+    detailsStr = d.details ?? d.type ?? (d.networkDetails as unknown as { message?: string })?.message;
+    if (typeof httpCodeOrHost === "number") httpCode = httpCodeOrHost;
+  } else if (typeof dataOrCode === "string") {
+    detailsStr = dataOrCode;
+    if (typeof httpCodeOrHost === "number") httpCode = httpCodeOrHost;
+  }
+  // Also accept hostHint ignored for mapping but kept for debug signature
+  void hostHint;
+
+  const detailsLower = (detailsStr ?? "").toLowerCase();
+  const isTimeout =
+    detailsLower.includes("timeout") ||
+    detailsLower.includes("timed out") ||
+    httpCode === 408 ||
+    httpCode === 504;
+
+  if (isTimeout) {
+    return "Connection timed out. Check internet or try Retry.";
+  }
+  if (httpCode === 401) {
+    return "Authentication failed. Check username/password or max connections.";
+  }
+  // 403 with auth hint -> auth message, otherwise geo/subscription message
+  if (httpCode === 403) {
+    if (detailsLower.includes("auth") || detailsLower.includes("unauthorized") || detailsLower.includes("forbidden")) {
+      return "Authentication failed. Check username/password or max connections.";
+    }
+    return "Channel unavailable (403). This is usually a subscription or geo restriction. Try another channel or check your provider.";
+  }
+  if (httpCode === 404) {
+    return "Stream not found (404). Channel may have moved.";
+  }
+  if (httpCode === 0) {
+    return "Network error. Offline or CORS blocked.";
+  }
+  if (!httpCode && (detailsLower.includes("networkerror") || detailsLower.includes("network error") || detailsLower.includes("cors") || detailsLower.includes("failed to fetch") || detailsLower.includes("offline"))) {
+    return "Network error. Offline or CORS blocked.";
+  }
+  return "Stream error. Try Retry or another source.";
+}
+
+export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null, zapList, onZap, getEpgForChannel, nextEpisode, onNextEpisode, autoNext, onEnded }: PlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const channelRef = useRef<Channel | null>(null);
@@ -68,6 +135,8 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const [subtitleTracks, setSubtitleTracks] = useState<TrackInfo[]>([]);
   const [audioId, setAudioId] = useState<number>(-1);
   const [subtitleId, setSubtitleId] = useState<number>(-1);
+  const [levels, setLevels] = useState<Array<{ idx: number; name: string }>>([]);
+  const [currentLevel, setCurrentLevel] = useState<number>(-1);
   const { getPosition, savePosition, clearPosition } = usePlaybackResume(profileId);
   const getPositionRef = useRef(getPosition);
   const hasPromptedRef = useRef<string | null>(null);
@@ -87,10 +156,24 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   const [zapOpen, setZapOpen] = useState(false);
   const zapOpenRef = useRef(false);
   useEffect(() => { zapOpenRef.current = zapOpen; }, [zapOpen]);
+  const [zapHint, setZapHint] = useState(false);
+  const zapHintTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (zapHintTimerRef.current) window.clearTimeout(zapHintTimerRef.current);
+    };
+  }, []);
 
   // Media (codec/MSE) recovery budget — stops recoverMediaError from looping forever.
   const mediaRecoverRef = useRef(0);
   const [showDiag, setShowDiag] = useState(false);
+  // 1.5 — keep technical details collapsed in diagnostics panel
+  const [detailedDiag, setDetailedDiag] = useState<string | null>(null);
+
+  // 1.6 — Auto-next countdown for episodes
+  const [autoNextOverlay, setAutoNextOverlay] = useState<{ next: Channel; countdown: number; total: number } | null>(null);
+  const autoNextTimerRef = useRef<number | null>(null);
+  const autoNextIntervalRef = useRef<number | null>(null);
 
   const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
     if (!v) return;
@@ -341,6 +424,17 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     timers.scheduleZapHide(() => setZapOpen(false), PLAYER_ZAP_HIDE_MS);
   }, [timers]);
 
+  const maybeShowZapHint = useCallback(() => {
+    try {
+      if (typeof window === "undefined" || !window.localStorage) return;
+      if (window.localStorage.getItem(PLAYER_ZAP_HINT_KEY)) return;
+      window.localStorage.setItem(PLAYER_ZAP_HINT_KEY, "1");
+      setZapHint(true);
+      if (zapHintTimerRef.current) window.clearTimeout(zapHintTimerRef.current);
+      zapHintTimerRef.current = window.setTimeout(() => setZapHint(false), PLAYER_ZAP_HINT_MS);
+    } catch {}
+  }, []);
+
   const zapDelta = useCallback((delta: number) => {
     if (!zapList || zapList.length === 0 || !channel || !onZap) return;
     const isLive = channel.kind == null || channel.kind === "live";
@@ -350,16 +444,44 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       setZapOpen(true);
       scheduleZapHide();
       onZap(next);
+      maybeShowZapHint();
     }
-  }, [zapList, channel, onZap, scheduleZapHide]);
+  }, [zapList, channel, onZap, scheduleZapHide, maybeShowZapHint]);
 
   const zapSelect = useCallback((ch: Channel) => {
     if (!onZap) return;
     setZapOpen(true);
     scheduleZapHide();
     onZap(ch);
-  }, [onZap, scheduleZapHide]);
+    maybeShowZapHint();
+  }, [onZap, scheduleZapHide, maybeShowZapHint]);
 
+  const handleSelectLevel = useCallback((idx: number) => {
+    const hls: any = hlsRef.current;
+    if (!hls) return;
+    try {
+      // hls.js: -1 = auto, >=0 = manual level
+      hls.currentLevel = idx;
+      // some hls.js versions also use nextLevel; keep in sync if present
+      if (typeof hls.nextLevel !== "undefined") {
+        try { hls.nextLevel = idx; } catch {}
+      }
+    } catch {}
+    setCurrentLevel(idx);
+  }, []);
+
+  /**
+   * 1.4 — Keyboard standardization:
+   * PlayerControls.tsx is the SINGLE key handler for player shortcuts when
+   * video is focused/playing (m mute, k/Space play, f fullscreen, p PiP,
+   * z cycleFit, c captions, ,/. speed, ←/→ seek, ↑/↓ zap-or-volume).
+   * This effect in Player.tsx ONLY handles live zap for ↑/↓ (non-shift)
+   * as a legacy global fallback (e.g., when PlayerControls not mounted).
+   * Gate: if (e.shiftKey) return — lets PlayerControls handle Shift+↑/↓
+   * for volume instead. PlayerControls handles zap via onZapPrev/Next with
+   * opposite gate (!shift => zap, shift => volume). This 0.5 gate keeps
+   * them in sync and avoids double-zap.
+   */
   useEffect(() => {
     if (!zapList || zapList.length < 2 || !channel) return;
     const isLive = channel.kind == null || channel.kind === "live";
@@ -368,9 +490,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       const t = e.target as HTMLElement | null;
       if (t && (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement || t.isContentEditable)) return;
       if (e.key === "ArrowUp") {
+        if (e.shiftKey) return;
         e.preventDefault();
         zapDelta(-1);
       } else if (e.key === "ArrowDown") {
+        if (e.shiftKey) return;
         e.preventDefault();
         zapDelta(1);
       } else if (e.key === "Escape" && zapOpenRef.current) {
@@ -413,6 +537,23 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         lastProgressRef.current = Date.now();
         setStatusWithStamp("buffering");
         refreshTracks();
+        try {
+          const rawLevels: any[] = (hls as any).levels ?? [];
+          if (rawLevels.length) {
+            const mapped = rawLevels.map((l: any, i: number) => ({
+              idx: i,
+              name: l.height ? `${l.height}p` : l.bitrate ? `${Math.round(l.bitrate / 1000)}k` : `Level ${i + 1}`,
+            }));
+            setLevels(mapped);
+          } else {
+            setLevels([]);
+          }
+          const cur = (hls as any).currentLevel;
+          setCurrentLevel(typeof cur === "number" ? cur : -1);
+        } catch {
+          setLevels([]);
+          setCurrentLevel(-1);
+        }
         applySpeed(video, speedRef.current);
         const saved = channelRef.current ? getPosition(channelRef.current.id) : undefined;
         if (saved && isResumable(saved.position, saved.duration, channelRef.current?.kind)) {
@@ -431,6 +572,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED as any, onTracks);
       hls.on(Hls.Events.AUDIO_TRACK_SWITCHED as any, onTracks);
       hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH as any, onTracks as any);
+      hls.on(Hls.Events.LEVEL_SWITCHED as any, (_evt: any, data: any) => {
+        if (typeof data?.level === "number") setCurrentLevel(data.level);
+        else if (typeof (hls as any).currentLevel === "number") setCurrentLevel((hls as any).currentLevel);
+      });
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
         lastProgressRef.current = Date.now();
         timers.clearStall();
@@ -555,10 +700,26 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           const httpCode = (data as { response?: { code?: number } }).response?.code ?? (nd as unknown as { status?: number })?.status;
           const ndMsgRaw = (data as { networkDetails?: { message?: string } }).networkDetails as unknown as { message?: string } | undefined;
           const ndMsg = ndMsgRaw?.message && !ndMsgRaw.message.includes("HTTP undefined") ? ndMsgRaw.message : undefined;
-          // Try HLS-native fallback as last resort: some Xtream panels serve raw TS even when .m3u8 403s —
-          // or CORS panel blocks m3u8 but TS is fetchable. Attempt direct video.src before hard-failing.
           const curV = videoRef.current;
           const lastUrl = sources[sourceIndexRef.current];
+          const hostHint = (()=>{ try{ return lastUrl ? new URL(lastUrl).host : "" }catch{ return "" } })();
+          // 1.5 — Build technical diag for collapsed panel; overlay shows only friendlyError
+          const detailsStr = `${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : httpCode ? ` — HTTP ${httpCode}` : ""}`;
+          const technical = [
+            `Channel: ${channelRef.current?.name ?? "unknown"}`,
+            `URL: ${lastUrl}`,
+            `AltUrls: ${(channelRef.current?.altUrls ?? []).join(" | ") || "—"}`,
+            `Host: ${hostHint || "—"}`,
+            `Tried sources:`,
+            ...sources.map((u,i)=> ` ${i===sourceIndexRef.current ? "→" : " "} SRC ${i+1}: ${u}`),
+            `State: error @ SRC ${sourceIndexRef.current+1}/${total} attempt ${attemptRef.current}/${MAX_RETRIES}`,
+            `HTTP code: ${httpCode ?? "—"}`,
+            `HLS: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : ""}`,
+            `Raw error: ${detailsStr}`,
+          ].join("\n");
+          setDetailedDiag(technical);
+          // Try HLS-native fallback as last resort: some Xtream panels serve raw TS even when .m3u8 403s —
+          // or CORS panel blocks m3u8 but TS is fetchable. Attempt direct video.src before hard-failing.
           const isM3u8 = lastUrl?.includes(".m3u8") || lastUrl?.includes("m3u8");
           const canTryNativeFallback = !!curV && isM3u8 && total === sources.length && httpCode && httpCode >= 400;
           if (canTryNativeFallback && curV) {
@@ -574,40 +735,26 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             curV.src = lastUrl;
             void curV.play().catch(() => {
               setStatusWithStamp("error");
-              setError(`Stream error: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : httpCode ? ` — HTTP ${httpCode}` : ""}${total > 1 ? ` (all ${total} sources exhausted)` : ""} — check provider/server credentials or try VLC with same URL.`);
+              const friendly = friendlyError(data, httpCode, hostHint);
+              setError(friendly);
+              console.error(`[Player] Native fallback failed`, { httpCode, details: data.details, hostHint, lastUrl });
             });
             // If native also errors, the video.onerror handler (re-armed) will surface the final error.
             // Attach a one-shot native error to guarantee we don't hang in buffering.
             const onNativeFail = () => {
               curV.removeEventListener("error", onNativeFail);
               setStatusWithStamp("error");
-              setError(`Stream error: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : httpCode ? ` — HTTP ${httpCode}` : ""}${total > 1 ? ` (all ${total} sources exhausted)` : ""} — provider returned ${httpCode ?? "network error"} for ${ (()=>{try{return new URL(lastUrl).host}catch{return lastUrl}})() }. Verify username/password, max_connections, and that the line is active in provider panel.`);
+              const friendly = friendlyError(data, httpCode, hostHint);
+              setError(friendly);
+              console.error(`[Player] Native <video> error`, { httpCode, hostHint, lastUrl });
             };
             curV.addEventListener("error", onNativeFail, { once: true });
             return;
           }
           setStatusWithStamp("error");
-          // Prefer explicit HTTP code when hls.js hides it as "networkError/manifestLoadError"
-          const codeHint = httpCode && httpCode !== 0 ? ` — HTTP ${httpCode}` : ndMsg ? ` — ${ndMsg}` : "";
-          const hostHint = (()=>{ try{ return lastUrl ? new URL(lastUrl).host : "" }catch{ return "" } })();
-          // Extra hint for mhiptv.info-style providers where port was omitted — pre-ee60990 required exact port.
-          const isTypoHost = hostHint.includes("frequancy");
-          const isAmagi = hostHint.includes("amagi.tv");
-          const portHint = isTypoHost
-            ? ` — URL has typo frequancy → frequency (auto-corrected), if still fails host may be offline.`
-            : isAmagi && httpCode === 403
-            ? ` — amagi.tv Samsung AU is geo-blocked outside AU (CloudFront 403). Try VLC in AU VPN or pick non-AU variant (US/EU).`
-            : hostHint && !hostHint.includes(":") && (hostHint === "mhiptv.info" || hostHint.includes("mhiptv"))
-            ? ` — check server URL includes port (e.g. http://mhiptv.info:8080 or :25461). Provider panel shows correct port.`
-            : hostHint.includes("frequency.stream") || hostHint.includes("linear-")
-            ? ` — frequency.stream linear channels often require exact Referer; now auto-handled, if 403 try VLC test: vlc "${lastUrl}"`
-            : total > 1 && httpCode === 403 ? ` — try re-entering server with http:// and correct port, or test URL in VLC.`
-            : httpCode === 403 ? ` — HTTP 403 usually means geo-block or expired token. Test in VLC: vlc "${lastUrl}" — if VLC also 403, stream is dead/geo-blocked.`
-            : "";
-          setError(
-            `Stream error: ${data.type}/${data.details}${codeHint}${total > 1 ? ` (all ${total} sources exhausted)` : ""}${hostHint ? ` @ ${hostHint}` : ""}${portHint}`
-          );
-          if (total > 1) console.error(`[Player] All ${total} sources failed. Tried:`, sources, `last details:`, data.details, `code:`, httpCode, `hint: re-enter server URL exactly as provider gave (with :port) or check max_connections/line status.`);
+          const friendly = friendlyError(data, httpCode, hostHint);
+          setError(friendly);
+          console.error(`[Player] All ${total} sources failed. Tried:`, sources, `last details:`, data.details, `code:`, httpCode, `host:`, hostHint);
         }
       });
     },
@@ -646,6 +793,12 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     sourceIndexRef.current = 0;
     setSourceMeta({ index: 0, total: getSources(ch).length, attempt: 0 });
     setError(null);
+    setDetailedDiag(null);
+    setShowDiag(false);
+    // 1.6 clear auto-next on retry/manual reload
+    if (autoNextTimerRef.current) window.clearTimeout(autoNextTimerRef.current);
+    if (autoNextIntervalRef.current) window.clearInterval(autoNextIntervalRef.current);
+    setAutoNextOverlay(null);
     setStatusWithStamp("loading");
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -662,14 +815,29 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       clearTimers();
       setStatusWithStamp("idle");
       setError(null);
+      setDetailedDiag(null);
+      setShowDiag(false);
+      if (autoNextTimerRef.current) window.clearTimeout(autoNextTimerRef.current);
+      if (autoNextIntervalRef.current) window.clearInterval(autoNextIntervalRef.current);
+      setAutoNextOverlay(null);
       setAudioTracks([]);
       setSubtitleTracks([]);
       setAudioId(-1);
       setSubtitleId(-1);
+      setLevels([]);
+      setCurrentLevel(-1);
       setSourceMeta({ index: 0, total: 1, attempt: 0 });
       return;
     }
+    setLevels([]);
+    setCurrentLevel(-1);
     setError(null);
+    setDetailedDiag(null);
+    setShowDiag(false);
+    // 1.6 clear stale auto-next on channel switch
+    if (autoNextTimerRef.current) window.clearTimeout(autoNextTimerRef.current);
+    if (autoNextIntervalRef.current) window.clearInterval(autoNextIntervalRef.current);
+    setAutoNextOverlay(null);
     setStatusWithStamp("loading");
     attemptRef.current = 0;
     sourceIndexRef.current = 0;
@@ -714,7 +882,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           } else {
             clearTimers();
             setStatusWithStamp("error");
-            setError(`Stream stalled — all ${total} sources exhausted.`);
+            // 1.5 — friendly timeout copy, keep technical in detailedDiag
+            setDetailedDiag(`Stalled: all ${total} sources exhausted. Last progress ${Date.now() - lastProgressRef.current}ms ago. Channels: ${getSources(ch).join(" | ")}`);
+            setError(friendlyError(408, "timeout"));
+            console.error(`[Player] Stall timeout — all ${total} sources exhausted.`);
           }
         }
       }, STALL_TIMEOUT_MS);
@@ -750,7 +921,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           } else {
             clearTimers();
             setStatusWithStamp("error");
-            setError(`Connection timeout — all ${total} sources exhausted.`);
+            setDetailedDiag(`Connection timeout: all ${total} sources exhausted. Channels: ${getSources(ch).join(" | ")}`);
+            setError(friendlyError(408, "timeout"));
+            console.error(`[Player] Connection timeout — all ${total} sources exhausted.`);
           }
         }
       }, CONNECT_TIMEOUT_MS);
@@ -861,7 +1034,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           }, decision.delayMs);
         } else {
           setStatusWithStamp("error");
-          setError(`Unable to play this stream.${total > 1 ? ` (all ${total} sources exhausted)` : ""}`);
+          // 1.5 — friendly default copy, technical in detailedDiag
+          setDetailedDiag(`Unable to play: all ${total} sources exhausted. Tried: ${curSources.join(" | ")}`);
+          setError(friendlyError(undefined, "networkerror"));
+          console.error(`[Player] Unable to play — all ${total} sources exhausted. Tried:`, curSources);
         }
       };
       video.addEventListener("loadeddata", onLoaded, { once: true });
@@ -927,6 +1103,13 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     };
   }, [channel, savePosition, clearPosition, resumePrompt]);
 
+  /**
+   * 1.4 — Simplified double-click zones:
+   * - Live always toggles fullscreen (TV-like behavior)
+   * - VOD: pct < 0.35 => seek back, pct > 0.65 => seek forward, else fullscreen
+   * Removed y > height-96 / y < 56 special cases per spec.
+   * Single source of truth: isLive check via channelRef.
+   */
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const v = videoRef.current;
@@ -937,18 +1120,14 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
       const x = e.clientX - rect.left;
       const w = rect.width || 1;
-      const y = e.clientY - rect.top;
-      if (y > rect.height - 96) {
-        void toggleFullscreen();
-        return;
-      }
-      if (y < 56) {
-        void toggleFullscreen();
-        return;
-      }
       const isLive = channelRef.current?.kind == null || channelRef.current?.kind === "live";
+      // Live: always fullscreen (like TV zap behavior)
+      if (isLive) {
+        void toggleFullscreen();
+        return;
+      }
       const pct = x / w;
-      if (!isLive && pct < 0.35) {
+      if (pct < 0.35) {
         handleSeek(-skipDuration);
       } else if (pct > 0.65) {
         handleSeek(skipDuration);
@@ -958,6 +1137,98 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     },
     [toggleFullscreen, handleSeek, skipDuration]
   );
+
+  // 1.6 — Auto-next helpers
+  const resolvedNext = autoNext?.next ?? nextEpisode ?? null;
+  const resolvedCountdown = autoNext?.countdown ?? 5;
+
+  const clearAutoNextTimers = useCallback(() => {
+    if (autoNextTimerRef.current !== null) {
+      window.clearTimeout(autoNextTimerRef.current);
+      autoNextTimerRef.current = null;
+    }
+    if (autoNextIntervalRef.current !== null) {
+      window.clearInterval(autoNextIntervalRef.current);
+      autoNextIntervalRef.current = null;
+    }
+  }, []);
+
+  const cancelAutoNext = useCallback(() => {
+    clearAutoNextTimers();
+    setAutoNextOverlay(null);
+  }, [clearAutoNextTimers]);
+
+  const triggerAutoNext = useCallback(() => {
+    const nxt = resolvedNext;
+    if (!nxt) return;
+    if (autoNextIntervalRef.current) window.clearInterval(autoNextIntervalRef.current);
+    if (autoNextTimerRef.current) window.clearTimeout(autoNextTimerRef.current);
+    setAutoNextOverlay({ next: nxt, countdown: resolvedCountdown, total: resolvedCountdown });
+    let remaining = resolvedCountdown;
+    autoNextIntervalRef.current = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        if (autoNextIntervalRef.current) window.clearInterval(autoNextIntervalRef.current);
+        autoNextIntervalRef.current = null;
+      }
+      setAutoNextOverlay(prev => prev ? { ...prev, countdown: Math.max(0, remaining) } : prev);
+    }, 1000);
+    autoNextTimerRef.current = window.setTimeout(() => {
+      clearAutoNextTimers();
+      setAutoNextOverlay(null);
+      if (onNextEpisode) onNextEpisode(nxt);
+      else if (onEnded) onEnded();
+    }, resolvedCountdown * 1000);
+  }, [resolvedNext, resolvedCountdown, clearAutoNextTimers, onNextEpisode, onEnded]);
+
+  const handlePlayNow = useCallback(() => {
+    const nxt = autoNextOverlay?.next ?? resolvedNext;
+    if (!nxt) return;
+    clearAutoNextTimers();
+    setAutoNextOverlay(null);
+    if (onNextEpisode) onNextEpisode(nxt);
+    else if (onEnded) onEnded();
+  }, [autoNextOverlay, resolvedNext, clearAutoNextTimers, onNextEpisode, onEnded]);
+
+  // 1.6 — Listen for video ended when channel is episode to start countdown
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (!channel) return;
+    if (channel.kind !== "episode") return;
+    if (!resolvedNext) return;
+    const onEndedVideo = () => {
+      // still check episode at time of firing (channelRef may have updated)
+      const current = channelRef.current;
+      if (!current || current.kind !== "episode") {
+        onEnded?.();
+        return;
+      }
+      if (!resolvedNext) {
+        onEnded?.();
+        return;
+      }
+      triggerAutoNext();
+    };
+    v.addEventListener("ended", onEndedVideo);
+    return () => v.removeEventListener("ended", onEndedVideo);
+  }, [channel, resolvedNext, triggerAutoNext, onEnded]);
+
+  // Also support parent onEnded prop always (even without autoNext)
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !onEnded) return;
+    // If autoNext already handling ended for episodes, avoid double fire for live? just attach generic
+    if (channel?.kind === "episode" && resolvedNext) return;
+    const handler = () => onEnded();
+    v.addEventListener("ended", handler);
+    return () => v.removeEventListener("ended", handler);
+  }, [channel, resolvedNext, onEnded]);
+
+  useEffect(() => {
+    // cleanup timers on channel switch
+    return () => clearAutoNextTimers();
+  }, [channel?.id, clearAutoNextTimers]);
 
   if (!channel) {
     return (
@@ -998,6 +1269,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         subtitleId={subtitleId}
         onSwitchAudio={switchAudio}
         onSwitchSubtitle={switchSubtitle}
+        levels={levels}
+        currentLevel={currentLevel}
+        onSelectLevel={handleSelectLevel}
         onZapPrev={zapList && zapList.length > 1 && (channel?.kind == null || channel?.kind === "live") ? () => zapDelta(-1) : undefined}
         onZapNext={zapList && zapList.length > 1 && (channel?.kind == null || channel?.kind === "live") ? () => zapDelta(1) : undefined}
         zapOpen={zapOpen}
@@ -1019,6 +1293,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           onSelect={zapSelect}
         />
       )}
+      {zapHint && (
+        <div className="player-hint" role="status" aria-live="polite">↑/↓ Zap • Shift+↑/↓ Volume</div>
+      )}
       {resumePrompt && (
         <ResumePrompt
           position={resumePrompt.position}
@@ -1027,6 +1304,25 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           onResume={handleResume}
           onRestart={handleRestart}
         />
+      )}
+      {/* 1.6 — Auto-next countdown overlay for episodes */}
+      {autoNextOverlay && (
+        <div className="player-next" role="status" aria-live="polite" style={{ position: "absolute", bottom: 88, left: 16, right: 16, background: "rgba(0,0,0,0.82)", border: "1px solid var(--outline-variant)", borderRadius: 12, padding: "14px 16px", backdropFilter: "blur(8px)", zIndex: 8, overflow: "hidden" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--on-surface-variant)", marginBottom: 4 }}>Up Next</div>
+              <div style={{ fontFamily: "var(--font-body)", fontSize: 14, fontWeight: 600, color: "var(--on-surface)", lineHeight: 1.3 }}>{autoNextOverlay.next.name}</div>
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--on-surface-variant)", marginTop: 4 }}>in {autoNextOverlay.countdown}s</div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="player-retry" onClick={handlePlayNow} aria-label="Play next now" style={{ background: "var(--primary-container)", color: "var(--surface)", fontWeight: 700 }}>Play Now</button>
+              <button type="button" className="player-retry" onClick={cancelAutoNext} aria-label="Cancel auto next" style={{ background: "#333" }}>Cancel</button>
+            </div>
+          </div>
+          <div style={{ marginTop: 12, height: 2, background: "rgba(255,255,255,0.14)", borderRadius: 9999, overflow: "hidden" }}>
+            <div style={{ height: "100%", background: "var(--signal)", width: `${Math.max(0, (autoNextOverlay.countdown / autoNextOverlay.total) * 100)}%`, transition: "width 1s linear" }} />
+          </div>
+        </div>
       )}
       {status === "loading" && (
         <div className="player-overlay player-overlay--loading" role="status" aria-live="polite">
@@ -1057,7 +1353,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             <button type="button" className="player-retry" onClick={retry} aria-label="Retry playback">Retry</button>
             <button type="button" className="player-retry" onClick={() => setShowDiag(v => !v)} aria-label="Toggle diagnostics" style={{ background: "#333" }}>{showDiag ? "Hide Details" : "Show Details"}</button>
             <button type="button" className="player-retry" onClick={() => {
-              const diag = `Channel: ${channel.name}\nURL: ${channel.url}\nAlt: ${(channel.altUrls ?? []).join(" | ") || "none"}\nHeaders: ${channel.headers ? JSON.stringify(channel.headers) : "none"}\nSources tried: ${getSources(channel).join("\n")}\nSRC ${sourceMeta.index+1}/${sourceMeta.total} attempt ${sourceMeta.attempt}/${MAX_RETRIES}\nError: ${error}\nHint: Press F12 or Ctrl+Shift+I for DevTools (now unblocked), or test URL in VLC: vlc "${channel.url}"`;
+              const diag = detailedDiag ?? `Channel: ${channel.name}\nURL: ${channel.url}\nAlt: ${(channel.altUrls ?? []).join(" | ") || "none"}\nHeaders: ${channel.headers ? JSON.stringify(channel.headers) : "none"}\nSources tried: ${getSources(channel).join("\n")}\nSRC ${sourceMeta.index+1}/${sourceMeta.total} attempt ${sourceMeta.attempt}/${MAX_RETRIES}\nError: ${error}\nDetailed: ${detailedDiag ?? "—"}\nHint: Press F12 or Ctrl+Shift+I for DevTools (now unblocked), or test URL in VLC: vlc "${channel.url}"`;
               navigator.clipboard?.writeText(diag).then(()=> alert("Diagnostics copied — paste here")).catch(()=> alert(diag));
             }} aria-label="Copy diagnostics" style={{ background: "#444" }}>Copy Info</button>
           </div>
@@ -1070,7 +1366,9 @@ Headers: ${channel.headers ? JSON.stringify(channel.headers, null, 2) : "—"}
 Tried sources:
 ${getSources(channel).map((u,i)=> ` ${i===sourceMeta.index ? "→" : " "} SRC ${i+1}: ${u}`).join("\n")}
 State: ${status} @ SRC ${sourceMeta.index+1}/${sourceMeta.total} attempt ${sourceMeta.attempt}/${MAX_RETRIES}
-Error: ${error}
+Friendly: ${error}
+Technical:
+${detailedDiag ?? "No technical details captured. Check console."}
 Tip: F12 now works (was blocked). Test in VLC: vlc "${channel.url}"`}
             </pre>
           )}

@@ -8,7 +8,7 @@ import { useVideoZoom, FIT_MODES } from "../hooks/useVideoZoom";
 import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 import { useTheme } from "../hooks/useTheme";
 import { useParental } from "../hooks/useParental";
-import { strings, type StringKey } from "../i18n";
+import { strings, type StringKey, type Lang } from "../i18n";
 import { useLang } from "../hooks/useLang";
 import { useEpgEnabled } from "../hooks/useEpgEnabled";
 import { useXtreamCreds } from "../hooks/useXtreamCreds";
@@ -72,10 +72,10 @@ function ParentalSettings() {
   );
 }
 
-function fmtLastChecked(ts: number | null, s: Strings): string {
+function fmtLastChecked(ts: number | null, s: Strings, lang: Lang = "en"): string {
   if (ts === null) return s.neverChecked;
   try {
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(lang === "ar" ? "ar-EG" : undefined);
   } catch {
     return String(ts);
   }
@@ -203,7 +203,7 @@ function UpdatesSettings({ updater: updaterProp }: { updater?: UpdaterState }) {
       <div className="set-row">
         <span className="set-row-label">{s.lastChecked}</span>
         <span className="set-row-leader" />
-        <span className="set-row-value" style={{ fontSize: 11 }}>{fmtLastChecked(updater.lastChecked, s)}</span>
+        <span className="set-row-value" style={{ fontSize: 11 }}>{fmtLastChecked(updater.lastChecked, s, lang)}</span>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
