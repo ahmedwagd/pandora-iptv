@@ -1,7 +1,15 @@
 export type ContentKind = "live" | "movie" | "episode";
 
+/** Branded channel id for type safety between M3U hash and Xtream numeric ids */
+export type ChannelId = string & { readonly __brand: unique symbol };
+export type ChannelHeaders = Record<string, string> & {
+  "User-Agent"?: string;
+  Referer?: string;
+  Origin?: string;
+};
+
 export interface Channel {
-  id: string; // stable hash of name+url, used for favorites
+  id: string; // stable hash of name+url, used for favorites (ChannelId branded in new code)
   name: string;
   url: string;
   altUrls?: string[]; // backup sources — tried after url exhausts its retries
@@ -10,7 +18,7 @@ export interface Channel {
   tvgId?: string;
   kind?: ContentKind; // absent for M3U/live channels
   catchup?: { days: number; source: string } | null;
-  headers?: Record<string, string>; // e.g. http-user-agent / http-referrer from #EXTVLCOPT
+  headers?: ChannelHeaders; // e.g. http-user-agent / http-referrer from #EXTVLCOPT
 }
 
 export interface PlaylistSource {

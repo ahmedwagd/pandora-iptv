@@ -1,8 +1,8 @@
 import { memo } from "react";
 import { useLang } from "../hooks/useLang";
 import { strings } from "../i18n";
-
-export type SmartFilter = "all" | "favorites" | "continue";
+import type { SmartFilter } from "../types/filters";
+export type { SmartFilter } from "../types/filters";
 
 interface FilterSidebarProps {
   smartFilter: SmartFilter;

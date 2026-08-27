@@ -14,8 +14,10 @@ import {
   STALL_TIMEOUT_MS,
   decideAfterFailure,
 } from "../lib/streamPolicy";
-import { TauriHlsLoader } from "../lib/hlsTauriLoader";
+import { createHlsLoaderClass } from "../lib/hls/loader";
 import { zapNeighbors, zapStep } from "../lib/zap";
+import { PLAYER_MAX_BUFFER_LENGTH_SEC, PLAYER_MAX_MEDIA_RECOVER, PLAYER_ZAP_HIDE_MS } from "../lib/player/constants";
+import { PlayerTimers } from "../lib/player/timers";
 import { ZapOverlay } from "./player/ZapOverlay";
 import type { EpgProgramme } from "../types/epg";
 
@@ -77,18 +79,16 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   // Resilience refs (per channel session)
   const sourceIndexRef = useRef(0);
   const attemptRef = useRef(0);
-  const retryTimerRef = useRef<number | null>(null);
-  const stallTimerRef = useRef<number | null>(null);
-  const connectTimerRef = useRef<number | null>(null);
+  const timersRef = useRef<PlayerTimers | null>(null);
+  if (!timersRef.current) timersRef.current = new PlayerTimers();
+  const timers = timersRef.current;
   const statusSinceRef = useRef<number>(Date.now());
   const lastProgressRef = useRef<number>(Date.now());
   const [zapOpen, setZapOpen] = useState(false);
-  const zapHideRef = useRef<number | null>(null);
   const zapOpenRef = useRef(false);
   useEffect(() => { zapOpenRef.current = zapOpen; }, [zapOpen]);
 
   // Media (codec/MSE) recovery budget — stops recoverMediaError from looping forever.
-  const MAX_MEDIA_RECOVER = 2;
   const mediaRecoverRef = useRef(0);
   const [showDiag, setShowDiag] = useState(false);
 
@@ -329,19 +329,8 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   }, []);
 
   const clearTimers = useCallback(() => {
-    if (retryTimerRef.current !== null) {
-      window.clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-    if (stallTimerRef.current !== null) {
-      window.clearTimeout(stallTimerRef.current);
-      stallTimerRef.current = null;
-    }
-    if (connectTimerRef.current !== null) {
-      window.clearTimeout(connectTimerRef.current);
-      connectTimerRef.current = null;
-    }
-  }, []);
+    timers.clearAll();
+  }, [timers]);
 
   const setStatusWithStamp = useCallback((s: PlayerStatus) => {
     statusSinceRef.current = Date.now();
@@ -349,9 +338,8 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   }, []);
 
   const scheduleZapHide = useCallback(() => {
-    if (zapHideRef.current !== null) window.clearTimeout(zapHideRef.current);
-    zapHideRef.current = window.setTimeout(() => setZapOpen(false), 4000);
-  }, []);
+    timers.scheduleZapHide(() => setZapOpen(false), PLAYER_ZAP_HIDE_MS);
+  }, [timers]);
 
   const zapDelta = useCallback((delta: number) => {
     if (!zapList || zapList.length === 0 || !channel || !onZap) return;
@@ -387,7 +375,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         zapDelta(1);
       } else if (e.key === "Escape" && zapOpenRef.current) {
         e.preventDefault();
-        if (zapHideRef.current !== null) window.clearTimeout(zapHideRef.current);
+        timers.clearZapHide();
         setZapOpen(false);
       }
     };
@@ -403,21 +391,11 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         hlsRef.current = null;
       }
       // iptv-org and many M3Us require http-user-agent / http-referrer per channel (#EXTVLCOPT)
-      // Pre-ee60990 ignored them -> 403. Inject them into the Tauri loader via context.headers.
+      // Pre-ee60990 ignored them -> 403. Inject them via factory (DIP) instead of dynamic subclass.
       const chHeaders = channelRef.current?.headers;
-      const LoaderClass = chHeaders
-        ? class extends TauriHlsLoader {
-            load(ctx: never, cfg: never, cb: never) {
-              (ctx as unknown as { headers?: Record<string, string> }).headers = {
-                ...chHeaders,
-                ...((ctx as unknown as { headers?: Record<string, string> }).headers ?? {}),
-              };
-              return super.load(ctx as never, cfg as never, cb as never);
-            }
-          }
-        : TauriHlsLoader;
+      const LoaderClass = createHlsLoaderClass(chHeaders);
       const hls = new Hls({
-        maxBufferLength: 30,
+        maxBufferLength: PLAYER_MAX_BUFFER_LENGTH_SEC,
         // WebView2 CSP is `script-src 'self'` (no blob:), which blocks hls.js's
         // transmuxer worker — run transmuxing on the main thread instead.
         enableWorker: false,
@@ -455,15 +433,12 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       hls.on(Hls.Events.SUBTITLE_TRACK_SWITCH as any, onTracks as any);
       hls.on(Hls.Events.FRAG_BUFFERED, () => {
         lastProgressRef.current = Date.now();
-        if (stallTimerRef.current !== null) {
-          window.clearTimeout(stallTimerRef.current);
-          stallTimerRef.current = null;
-        }
+        timers.clearStall();
       });
       hls.on(Hls.Events.ERROR, (_evt, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-          if (mediaRecoverRef.current < MAX_MEDIA_RECOVER) {
+          if (mediaRecoverRef.current < PLAYER_MAX_MEDIA_RECOVER) {
             mediaRecoverRef.current++;
             try {
               hls.recoverMediaError();
@@ -484,25 +459,13 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           totalSources: total,
           attempt: attemptRef.current,
         });
-        // Clear stall/connect timers to avoid races with retry (fix hang at 3/3)
-        if (stallTimerRef.current !== null) {
-          window.clearTimeout(stallTimerRef.current);
-          stallTimerRef.current = null;
-        }
-        if (connectTimerRef.current !== null) {
-          window.clearTimeout(connectTimerRef.current);
-          connectTimerRef.current = null;
-        }
-        if (retryTimerRef.current !== null) {
-          window.clearTimeout(retryTimerRef.current);
-          retryTimerRef.current = null;
-        }
+        timers.clearAll();
         if (decision.kind === "retry") {
           attemptRef.current = decision.nextAttempt;
           setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
           setStatusWithStamp("reconnecting");
           setError(null);
-          retryTimerRef.current = window.setTimeout(() => {
+          timers.scheduleRetry(() => {
             const cur = channelRef.current;
             const curV = videoRef.current;
             if (!cur || !curV) return;
@@ -558,7 +521,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
           setStatusWithStamp("reconnecting");
           setError(`Switching to backup source…`);
-          retryTimerRef.current = window.setTimeout(() => {
+          timers.scheduleRetry(() => {
             const cur = channelRef.current;
             const curV = videoRef.current;
             if (!cur || !curV) return;
@@ -721,8 +684,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     clearTimers();
 
     const armStall = () => {
-      if (stallTimerRef.current !== null) window.clearTimeout(stallTimerRef.current);
-      stallTimerRef.current = window.setTimeout(() => {
+      timers.armStall(() => {
         const ch = channelRef.current;
         const v = videoRef.current;
         if (!ch || !v) return;
@@ -735,31 +697,19 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             attempt: attemptRef.current,
           });
           if (decision.kind === "retry" || decision.kind === "switch-source") {
-            // Clear any pending retry before scheduling new one (avoid overlap hang at 3/3)
-            if (retryTimerRef.current !== null) {
-              window.clearTimeout(retryTimerRef.current);
-              retryTimerRef.current = null;
-            }
-            if (stallTimerRef.current !== null) {
-              window.clearTimeout(stallTimerRef.current);
-              stallTimerRef.current = null;
-            }
-            if (connectTimerRef.current !== null) {
-              window.clearTimeout(connectTimerRef.current);
-              connectTimerRef.current = null;
-            }
+            timers.clearAll();
             setStatusWithStamp("reconnecting");
             // Reuse the same retry path as HLS error: just reload at current/next source
             if (decision.kind === "retry") {
               attemptRef.current = decision.nextAttempt;
               setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
-              retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+              timers.scheduleRetry(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
             } else {
               sourceIndexRef.current = decision.nextSourceIndex;
               attemptRef.current = 0;
               setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
               setError(`Switching to backup source…`);
-              retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+              timers.scheduleRetry(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
             }
           } else {
             clearTimers();
@@ -771,12 +721,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     };
 
     const armConnect = () => {
-      if (connectTimerRef.current !== null) window.clearTimeout(connectTimerRef.current);
-      if (retryTimerRef.current !== null) {
-        window.clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = null;
-      }
-      connectTimerRef.current = window.setTimeout(() => {
+      timers.armConnect(() => {
         const v = videoRef.current;
         const ch = channelRef.current;
         if (!v || !ch) return;
@@ -788,26 +733,20 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             totalSources: total,
             attempt: attemptRef.current,
           });
-          if (retryTimerRef.current !== null) {
-            window.clearTimeout(retryTimerRef.current);
-            retryTimerRef.current = null;
-          }
-          if (stallTimerRef.current !== null) {
-            window.clearTimeout(stallTimerRef.current);
-            stallTimerRef.current = null;
-          }
+          timers.clearRetry();
+          timers.clearStall();
           if (decision.kind === "retry") {
             attemptRef.current = decision.nextAttempt;
             setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
             setStatusWithStamp("reconnecting");
-            retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+            timers.scheduleRetry(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
           } else if (decision.kind === "switch-source") {
             sourceIndexRef.current = decision.nextSourceIndex;
             attemptRef.current = 0;
             setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
             setError(`Switching to backup source…`);
             setStatusWithStamp("reconnecting");
-            retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
+            timers.scheduleRetry(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
           } else {
             clearTimers();
             setStatusWithStamp("error");
@@ -831,14 +770,8 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
     };
     const onCanPlay = () => {
       lastProgressRef.current = Date.now();
-      if (connectTimerRef.current !== null) {
-        window.clearTimeout(connectTimerRef.current);
-        connectTimerRef.current = null;
-      }
-      if (stallTimerRef.current !== null) {
-        window.clearTimeout(stallTimerRef.current);
-        stallTimerRef.current = null;
-      }
+      timers.clearConnect();
+      timers.clearStall();
       setStatus((s) => (s === "loading" || s === "buffering" ? "idle" : s));
     };
     const onTimeUpdate = () => {
@@ -873,10 +806,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       video.src = url0;
       armConnect();
       const onLoaded = () => {
-        if (connectTimerRef.current !== null) {
-          window.clearTimeout(connectTimerRef.current);
-          connectTimerRef.current = null;
-        }
+        timers.clearConnect();
         lastProgressRef.current = Date.now();
         setStatusWithStamp("idle");
         refreshTracks();
@@ -897,7 +827,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           attemptRef.current = decision.nextAttempt;
           setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
           setStatusWithStamp("reconnecting");
-          retryTimerRef.current = window.setTimeout(() => {
+          timers.scheduleRetry(() => {
             const cur = channelRef.current;
             const curV = videoRef.current;
             if (!cur || !curV) return;
@@ -917,7 +847,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           setSourceMeta({ index: sourceIndexRef.current, total, attempt: 0 });
           setStatusWithStamp("reconnecting");
           setError(`Switching to backup source…`);
-          retryTimerRef.current = window.setTimeout(() => {
+          timers.scheduleRetry(() => {
             const cur = channelRef.current;
             const curV = videoRef.current;
             if (!cur || !curV) return;
@@ -1073,7 +1003,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         zapOpen={zapOpen}
         onToggleZap={() => {
           if (zapOpen) {
-            if (zapHideRef.current !== null) window.clearTimeout(zapHideRef.current);
+            timers.clearZapHide();
             setZapOpen(false);
           } else {
             setZapOpen(true);

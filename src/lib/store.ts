@@ -5,7 +5,12 @@ const STORE_FILE = "iptv-app-data.json";
 let storePromise: Promise<Store> | null = null;
 
 export function getStore(): Promise<Store> {
-  if (!storePromise) storePromise = load(STORE_FILE, { autoSave: true });
+  if (!storePromise) {
+    storePromise = load(STORE_FILE, { autoSave: true }).catch((e) => {
+      storePromise = null;
+      throw e;
+    });
+  }
   return storePromise;
 }
 
@@ -26,5 +31,7 @@ export async function deleteValue(key: string): Promise<void> {
 
 /** For tests: reset singleton */
 export function __resetStoreForTests() {
-  storePromise = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const env = (globalThis as unknown as { process?: { env?: Record<string, string> } }).process?.env?.NODE_ENV;
+  if (env !== "production") storePromise = null;
 }

@@ -29,11 +29,18 @@ export function useEpg(creds: XtreamCreds | null, enabled: boolean): UseEpgRetur
   const shortCacheRef = useRef<Map<string, EpgProgramme[]>>(new Map());
   const credsRef = useRef(creds);
   credsRef.current = creds;
+  const epgMapRef = useRef(epgMap);
+  epgMapRef.current = epgMap;
+
+  // Invalidate short cache when creds/profile change
+  useEffect(() => {
+    shortCacheRef.current.clear();
+  }, [creds?.server, creds?.username]);
 
   const refresh = useCallback(
     async (force = false) => {
       if (!credsRef.current || !enabled) return;
-      if (!force && Date.now() - lastFetchRef.current < TTL_MS && epgMap.size > 0) return;
+      if (!force && Date.now() - lastFetchRef.current < TTL_MS && epgMapRef.current.size > 0) return;
 
       abortRef.current?.abort();
       const ctrl = new AbortController();
@@ -54,7 +61,7 @@ export function useEpg(creds: XtreamCreds | null, enabled: boolean): UseEpgRetur
         if (!ctrl.signal.aborted) setLoading(false);
       }
     },
-    [enabled, epgMap.size]
+    [enabled]
   );
 
   const fetchShort = useCallback(async (channelId: string): Promise<EpgProgramme[]> => {

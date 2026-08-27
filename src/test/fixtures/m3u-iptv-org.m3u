@@ -1,0 +1,10 @@
+#EXTM3U
+#EXTINF:-1 tvg-id="CNN.us" tvg-logo="https://example.com/cnn.png" group-title="News" http-user-agent="VLC/3.0.20" http-referrer="https://iptv-org.github.io/",CNN International
+#EXTVLCOPT:http-user-agent=VLC/3.0.20 LibVLC/3.0.20
+#EXTVLCOPT:http-referrer=https://iptv-org.github.io/
+https://example.com/live/cnn.m3u8
+#EXTINF:-1 tvg-id="BBC.uk" group-title="News",BBC News
+https://example.com/live/bbc.m3u8
+https://example.com/live/bbc-backup.m3u8
+#EXTINF:-1 group-title="Sports",Sports HD
+https://example.com/live/sports.m3u8

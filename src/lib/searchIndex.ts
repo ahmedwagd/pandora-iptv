@@ -23,15 +23,31 @@ export function buildSearchIndex(opts: {
   return out;
 }
 
+export const SEARCH_SCORING = {
+  EXACT: 100,
+  PREFIX: 80,
+  SUBSTRING_BASE: 60,
+  SUBSTRING_DECAY: 0.5,
+  GROUP: 30,
+  EPG_BOOST: 45,
+  DEFAULT_LIMIT: 30,
+} as const;
+
+function normalizeForSearch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function score(name: string, group: string, q: string): number {
-  const n = name.toLowerCase();
-  const g = group.toLowerCase();
-  if (n === q) return 100;
-  if (n.startsWith(q)) return 80 - n.indexOf(q);
+  const n = normalizeForSearch(name);
+  const g = normalizeForSearch(group);
+  if (n === q) return SEARCH_SCORING.EXACT;
+  if (n.startsWith(q)) return SEARCH_SCORING.PREFIX;
   const idx = n.indexOf(q);
-  if (idx >= 0) return 60 - idx * 0.5;
-  // group match
-  if (g.includes(q)) return 30;
+  if (idx >= 0) return SEARCH_SCORING.SUBSTRING_BASE - idx * SEARCH_SCORING.SUBSTRING_DECAY;
+  if (g.includes(q)) return SEARCH_SCORING.GROUP;
   return 0;
 }
 
@@ -44,18 +60,17 @@ export function rankResults(
   query: string,
   opts?: { getEpgForChannel?: (id: string) => { now?: { title: string }; next?: { title: string } } | undefined; limit?: number }
 ): RankedItem[] {
-  const q = query.trim().toLowerCase();
+  const q = normalizeForSearch(query.trim());
   if (!q) return [];
-  const limit = opts?.limit ?? 30;
+  const limit = opts?.limit ?? SEARCH_SCORING.DEFAULT_LIMIT;
   const ranked: RankedItem[] = [];
   for (const item of index) {
     let s = score(item.name, item.group, q);
-    // EPG programme titles boost for live
     if (item.kind === "live" && opts?.getEpgForChannel) {
       const epg = opts.getEpgForChannel(item.id);
-      const nowTitle = epg?.now?.title?.toLowerCase() ?? "";
-      const nextTitle = epg?.next?.title?.toLowerCase() ?? "";
-      if (nowTitle.includes(q) || nextTitle.includes(q)) s = Math.max(s, 45);
+      const nowTitle = normalizeForSearch(epg?.now?.title ?? "");
+      const nextTitle = normalizeForSearch(epg?.next?.title ?? "");
+      if (nowTitle.includes(q) || nextTitle.includes(q)) s = Math.max(s, SEARCH_SCORING.EPG_BOOST);
     }
     if (s > 0) ranked.push({ ...item, score: s });
   }

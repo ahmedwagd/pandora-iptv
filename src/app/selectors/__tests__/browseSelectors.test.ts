@@ -1,11 +1,12 @@
-// @ts-nocheck
 import { describe, it, expect } from "vitest";
 import { selectPosterCards } from "../browseSelectors";
-const movies = [
-  { id: "movie:1", name: "Zulu", url: "", logo: "", group: "Action", kind: "movie" as const },
-  { id: "movie:2", name: "Apple", url: "", logo: "", group: "Action", kind: "movie" as const },
+import type { Channel, Series } from "../../../types";
+
+const movies: Channel[] = [
+  { id: "movie:1", name: "Zulu", url: "http://a", logo: "", group: "Action", kind: "movie" },
+  { id: "movie:2", name: "Apple", url: "http://b", logo: "", group: "Action", kind: "movie" },
 ];
-const series: any[] = [];
+const series: Series[] = [];
 describe("selectPosterCards sort", () => {
   it("A-Z", () => {
     const cards = selectPosterCards({
@@ -14,7 +15,7 @@ describe("selectPosterCards sort", () => {
       category: null,
       search: "",
       sortKey: "name-asc",
-      movies: movies as any,
+      movies,
       series,
       history: [],
       favoriteIds: new Set(),
@@ -28,7 +29,7 @@ describe("selectPosterCards sort", () => {
       category: null,
       search: "",
       sortKey: "name-desc",
-      movies: movies as any,
+      movies,
       series,
       history: [],
       favoriteIds: new Set(),
@@ -42,7 +43,7 @@ describe("selectPosterCards sort", () => {
       category: null,
       search: "zulu",
       sortKey: "name-asc",
-      movies: movies as any,
+      movies,
       series,
       history: [],
       favoriteIds: new Set(),

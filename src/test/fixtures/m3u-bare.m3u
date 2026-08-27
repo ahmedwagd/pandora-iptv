@@ -1,0 +1,4 @@
+https://example.com/live/bare1.m3u8
+https://example.com/live/bare2.m3u8
+#EXTINF:-1 group-title="Movies",Movie 1
+https://example.com/movie/movie1.mkv

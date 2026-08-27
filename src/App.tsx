@@ -89,6 +89,9 @@ export default function App() {
     setSmartFilter,
     setCategory,
     setSearch,
+    enterContent: storeEnterContent,
+    goHome: storeGoHome,
+    handleDisconnect: storeHandleDisconnect,
   } = useAppStore();
   const [sortKey, setSortKey] = useState<SortKey>("recent");
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -264,44 +267,22 @@ export default function App() {
 
   const enterContent = useCallback(
     (mode: typeof contentMode) => {
-      setContentMode(mode);
-      setSmartFilter("all");
-      setCategory(null);
-      setSearch("");
       closeSeries();
-      setScreen("browse");
+      storeEnterContent(mode);
     },
-    [closeSeries, setContentMode, setSmartFilter, setCategory, setSearch, setScreen]
+    [closeSeries, storeEnterContent]
   );
 
   const goHome = useCallback(() => {
-    setScreen("home");
-    setActive(null);
-    setDetailTarget(null);
     closeSeries();
-  }, [closeSeries, setActive, setDetailTarget, setScreen]);
+    storeGoHome();
+  }, [closeSeries, storeGoHome]);
 
   const handleDisconnect = useCallback(() => {
     disconnect();
     clearXtreamCreds();
-    setActive(null);
-    setDetailTarget(null);
-    setContentMode("live");
-    setSmartFilter("all");
-    setCategory(null);
-    setSearch("");
-    setScreen("home");
-  }, [
-    disconnect,
-    clearXtreamCreds,
-    setActive,
-    setCategory,
-    setContentMode,
-    setDetailTarget,
-    setScreen,
-    setSmartFilter,
-    setSearch,
-  ]);
+    storeHandleDisconnect();
+  }, [disconnect, clearXtreamCreds, storeHandleDisconnect]);
 
   const watch = useCallback(
     (channel: Channel) => {

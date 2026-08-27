@@ -1,0 +1,19 @@
+[
+  {
+    "stream_id": 101,
+    "name": "CNN HD",
+    "stream_icon": "https://example.com/cnn.png",
+    "epg_channel_id": "CNN.us",
+    "category_id": "1",
+    "tv_archive": 1,
+    "tv_archive_duration": 7,
+    "direct_source": "https://cdn.example.com/live/cnn-direct.m3u8"
+  },
+  {
+    "stream_id": 102,
+    "name": "BBC World",
+    "stream_icon": null,
+    "epg_channel_id": null,
+    "category_id": "1"
+  }
+]

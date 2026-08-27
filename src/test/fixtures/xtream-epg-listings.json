@@ -1,0 +1,22 @@
+{
+  "epg_listings": [
+    {
+      "channel_id": "CNN.us",
+      "title": "Morning News",
+      "description": "Daily briefing",
+      "start": "2026-08-27 06:00:00",
+      "stop": "2026-08-27 07:00:00",
+      "start_timestamp": "1724748000",
+      "stop_timestamp": "1724751600"
+    },
+    {
+      "channel_id": "CNN.us",
+      "title": "Noon Update",
+      "description": "Midday news",
+      "start": "2026-08-27 12:00:00",
+      "stop": "2026-08-27 13:00:00",
+      "start_timestamp": "1724769600",
+      "stop_timestamp": "1724773200"
+    }
+  ]
+}

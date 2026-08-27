@@ -1,5 +1,5 @@
 import type { Channel, Series } from "../../types";
-import type { SmartFilter } from "../../components/FilterSidebar";
+import type { SmartFilter } from "../../types/filters";
 import type { PosterCard } from "../../components/PosterGrid";
 import type { WatchItem } from "../../types";
 

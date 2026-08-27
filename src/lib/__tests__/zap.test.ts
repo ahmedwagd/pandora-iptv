@@ -21,8 +21,21 @@ describe("zapStep", () => {
 });
 
 describe("zapNeighbors", () => {
-  it("returns radius*2+1", () => {
+  it("returns radius*2+1 capped by list size", () => {
     expect(zapNeighbors(list, "b", 1)).toHaveLength(3);
-    expect(zapNeighbors(list, "b", 3)).toHaveLength(7);
+    expect(zapNeighbors(list, "b", 3)).toHaveLength(3);
+  });
+  it("deduplicates when radius >= list.length", () => {
+    const neighbors = zapNeighbors(list, "a", 5);
+    const ids = neighbors.map((c) => c.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(neighbors).toHaveLength(3);
+  });
+  it("handles single-item list", () => {
+    const single: Channel[] = [{ id: "x", name: "X", url: "http://x", group: "G" }];
+    expect(zapNeighbors(single, "x", 3)).toEqual(single);
+  });
+  it("handles empty list", () => {
+    expect(zapNeighbors([], null, 3)).toEqual([]);
   });
 });

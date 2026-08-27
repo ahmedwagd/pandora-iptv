@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Channel, ContentMode, Series } from "../types";
-import type { SmartFilter } from "../components/FilterSidebar";
+import type { SmartFilter } from "../types/filters";
 
 export type Screen = "home" | "browse" | "detail" | "watch" | "settings";
 export type DetailTarget = { kind: "movie"; channel: Channel } | { kind: "series"; series: Series };
@@ -26,11 +26,19 @@ interface AppStore {
   setCategory: (c: string | null) => void;
   setSearch: (v: string) => void;
 
-  // composite actions (mirror App.tsx callbacks)
-  enterContent: (mode: ContentMode, closeSeries: () => void) => void;
-  goHome: (closeSeries: () => void) => void;
-  handleDisconnect: (disconnect: () => void) => void;
+  // composite actions — pure store transitions, no callback injection (DIP)
+  enterContent: (mode: ContentMode) => void;
+  goHome: () => void;
+  handleDisconnect: () => void;
   resetBrowseFilters: () => void;
+
+  // deprecated callback-based aliases for backward compat (will be removed)
+  /** @deprecated use enterContent(mode) and handle closeSeries in caller */
+  enterContentLegacy: (mode: ContentMode, closeSeries: () => void) => void;
+  /** @deprecated use goHome() */
+  goHomeLegacy: (closeSeries: () => void) => void;
+  /** @deprecated use handleDisconnect() */
+  handleDisconnectLegacy: (disconnect: () => void) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -50,7 +58,33 @@ export const useAppStore = create<AppStore>((set) => ({
   setCategory: (category) => set({ category, smartFilter: "all" }),
   setSearch: (search) => set({ search }),
 
-  enterContent: (mode, closeSeries) => {
+  // Pure transitions — caller composes side-effects (closeSeries/disconnect) outside store
+  enterContent: (mode) =>
+    set({
+      contentMode: mode,
+      smartFilter: "all",
+      category: null,
+      search: "",
+      screen: "browse",
+    }),
+
+  goHome: () => set({ screen: "home", active: null, detailTarget: null }),
+
+  handleDisconnect: () =>
+    set({
+      active: null,
+      detailTarget: null,
+      contentMode: "live",
+      smartFilter: "all",
+      category: null,
+      search: "",
+      screen: "home",
+    }),
+
+  resetBrowseFilters: () => set({ smartFilter: "all", category: null, search: "" }),
+
+  // Legacy wrappers — keep for existing callers during migration
+  enterContentLegacy: (mode, closeSeries) => {
     closeSeries();
     set({
       contentMode: mode,
@@ -60,13 +94,11 @@ export const useAppStore = create<AppStore>((set) => ({
       screen: "browse",
     });
   },
-
-  goHome: (closeSeries) => {
+  goHomeLegacy: (closeSeries) => {
     closeSeries();
     set({ screen: "home", active: null, detailTarget: null });
   },
-
-  handleDisconnect: (disconnect) => {
+  handleDisconnectLegacy: (disconnect) => {
     disconnect();
     set({
       active: null,
@@ -78,6 +110,4 @@ export const useAppStore = create<AppStore>((set) => ({
       screen: "home",
     });
   },
-
-  resetBrowseFilters: () => set({ smartFilter: "all", category: null, search: "" }),
 }));

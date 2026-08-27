@@ -119,4 +119,53 @@ describe("TauriHlsLoader", () => {
     expect(callbacks.onSuccess).not.toHaveBeenCalled();
     expect(callbacks.onError).not.toHaveBeenCalled();
   });
+
+  it("corrects frequancy.stream typo before fetch", async () => {
+    const loader = new TauriHlsLoader();
+    const callbacks = makeCallbacks();
+    mockFetch.mockResolvedValue(okResponse("#EXTM3U") as Response);
+
+    loader.load(context("http://linear-899.frequancy.stream/live/x.m3u8") as never, {} as never, callbacks as never);
+    await vi.waitFor(() => expect(callbacks.onSuccess).toHaveBeenCalled());
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining("frequency.stream"),
+      expect.anything()
+    );
+    expect(mockFetch).not.toHaveBeenCalledWith(expect.stringContaining("frequancy.stream"), expect.anything());
+  });
+
+  it("follows 302 redirect via location header", async () => {
+    const loader = new TauriHlsLoader();
+    const callbacks = makeCallbacks();
+    const redirectHeaders = { get: (k: string) => (k.toLowerCase() === "location" ? "http://server/redirected.m3u8" : null) };
+    mockFetch
+      .mockResolvedValueOnce({ ok: false, status: 302, statusText: "Found", headers: redirectHeaders } as unknown as Response)
+      .mockResolvedValueOnce(okResponse("#EXTM3U redirected") as Response);
+
+    loader.load(context("http://server/live/x.m3u8") as never, {} as never, callbacks as never);
+    await vi.waitFor(() => expect(callbacks.onSuccess).toHaveBeenCalled());
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenNthCalledWith(2, "http://server/redirected.m3u8", expect.anything());
+  });
+
+  it("calls onTimeout when fetch exceeds config timeout", async () => {
+    const loader = new TauriHlsLoader();
+    const callbacks = makeCallbacks();
+    mockFetch.mockImplementation(() => new Promise(() => {})); // never resolves
+
+    loader.load(context("http://server/live/x.m3u8") as never, { timeout: 15 } as never, callbacks as never);
+    await vi.waitFor(() => expect(callbacks.onTimeout).toHaveBeenCalled(), { timeout: 100 });
+  });
+
+  it("aborting after success is no-op (no resource id invalid)", async () => {
+    const loader = new TauriHlsLoader();
+    const callbacks = makeCallbacks();
+    mockFetch.mockResolvedValue(okResponse("#EXTM3U") as Response);
+
+    loader.load(context("http://server/live/x.m3u8") as never, {} as never, callbacks as never);
+    await vi.waitFor(() => expect(callbacks.onSuccess).toHaveBeenCalled());
+    // Abort after settled should not throw and should not trigger onAbort/onError
+    expect(() => loader.abort()).not.toThrow();
+    expect(callbacks.onAbort).not.toHaveBeenCalled();
+  });
 });
