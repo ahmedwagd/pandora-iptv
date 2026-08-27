@@ -73,7 +73,22 @@ export function usePlaylist() {
         const res = await tauriFetch(url, { method: "GET" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
-        const parsed = parseM3U(text);
+        // If user pasted a single HLS manifest (e.g. https://test-streams.mux.dev/.../x36xhzz.m3u8) as a “playlist”,
+        // parseM3U would mis-parse its #EXT-X-STREAM-INF variants as channels with relative URLs like url_0/...
+        // which then fail as “all 5 sources exhausted”. Detect HLS master and treat as single channel.
+        const isHlsMaster = text.includes("#EXT-X-STREAM-INF") && !text.includes('#EXTINF:');
+        let parsed = parseM3U(text);
+        if (isHlsMaster) {
+          // HLS master detected — the URL itself is the stream, not a channel list
+          if (parsed.length > 0 && parsed[0].url.startsWith("url_")) {
+            // mis-parsed variants — replace with single entry
+            parsed = [];
+          }
+          if (parsed.length === 0) {
+            const name = label ?? url.split("/").pop()?.replace(".m3u8","") ?? "HLS Stream";
+            parsed = [{ id: `hls:${url}`, name, url, group: "HLS", kind: "live" as const }];
+          }
+        }
         if (parsed.length === 0) throw new Error("No channels found — check the playlist URL.");
         setChannels(parsed);
         setSourceLabel(label ?? url);

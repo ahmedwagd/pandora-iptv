@@ -1,8 +1,10 @@
 export const MAX_RETRIES = 3;
 export const BASE_RETRY_DELAY_MS = 1_000;
 export const MAX_RETRY_DELAY_MS = 15_000;
-export const STALL_TIMEOUT_MS = 8_000;
-export const CONNECT_TIMEOUT_MS = 10_000;
+// Relaxed to match pre-ee60990 behavior (no aggressive timeouts). Old Player had no stall/connect timers
+// and Hls default frag timeout is 20s. 8s stalled live streams that buffer slowly.
+export const STALL_TIMEOUT_MS = 20_000;
+export const CONNECT_TIMEOUT_MS = 20_000;
 
 /** Exponential backoff capped at MAX_RETRY_DELAY_MS. attempt is 0-based. */
 export function computeRetryDelay(

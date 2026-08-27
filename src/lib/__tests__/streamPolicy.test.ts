@@ -33,12 +33,16 @@ describe("nextSourceIndex", () => {
 
 describe("isStalled / isConnectTimeout", () => {
   it("stalled", () => {
-    expect(isStalled(0, 8000)).toBe(true);
-    expect(isStalled(0, 7999)).toBe(false);
+    // defaults now 20s (relaxed from 8s which broke slow live streams pre-ee60990)
+    expect(isStalled(0, 20_000)).toBe(true);
+    expect(isStalled(0, 19_999)).toBe(false);
+    // explicit 8s still works when passed
+    expect(isStalled(0, 8000, 8000)).toBe(true);
   });
   it("connect timeout", () => {
-    expect(isConnectTimeout(0, 10000)).toBe(true);
-    expect(isConnectTimeout(0, 9999)).toBe(false);
+    expect(isConnectTimeout(0, 20_000)).toBe(true);
+    expect(isConnectTimeout(0, 19_999)).toBe(false);
+    expect(isConnectTimeout(0, 10000, 10000)).toBe(true);
   });
 });
 

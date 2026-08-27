@@ -240,7 +240,27 @@ function buildXtreamAltBases(
     if (u.protocol === "http:" && serverInfo?.https_port) push(`https://${host}:${String(serverInfo.https_port).trim()}`);
     if (u.protocol === "https:" && serverInfo?.port) push(`http://${host}:${String(serverInfo.port).trim()}`);
   } catch {}
-  return alts.slice(0, 2);
+  // Last resort for providers like mhiptv.info where creds.server was entered without port
+  // and server_info is empty/hidden — try common Xtream ports (8080,25461,2095,8000).
+  // Pre-ee60990 had no alt at all and relied on user typing correct port; post-ee60990 alts were too narrow.
+  if (alts.length === 0) {
+    try {
+      const u = new URL(primary);
+      const hasPort = /:\d+$/.test(primary);
+      if (!hasPort) {
+        const host = u.hostname;
+        const commonPorts = ["8080", "25461", "2095", "8000"];
+        for (const p of commonPorts) {
+          push(`${u.protocol}//${host}:${p}`);
+          // also flip scheme for same port (some panels serve http on 8080 but user typed https)
+          const flipped = u.protocol === "http:" ? "https:" : "http:";
+          push(`${flipped}//${host}:${p}`);
+          if (alts.length >= 4) break;
+        }
+      }
+    } catch {}
+  }
+  return alts.slice(0, 4);
 }
 
 function buildXtreamLiveAltUrls(

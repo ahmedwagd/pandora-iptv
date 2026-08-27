@@ -10,6 +10,7 @@ import { usePlaybackSpeed } from "../hooks/usePlaybackSpeed";
 import { usePlaybackResume } from "../hooks/usePlaybackResume";
 import {
   CONNECT_TIMEOUT_MS,
+  MAX_RETRIES,
   STALL_TIMEOUT_MS,
   decideAfterFailure,
 } from "../lib/streamPolicy";
@@ -89,6 +90,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
   // Media (codec/MSE) recovery budget — stops recoverMediaError from looping forever.
   const MAX_MEDIA_RECOVER = 2;
   const mediaRecoverRef = useRef(0);
+  const [showDiag, setShowDiag] = useState(false);
 
   const applySpeed = useCallback((v: HTMLVideoElement | null, s: number) => {
     if (!v) return;
@@ -400,6 +402,20 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      // iptv-org and many M3Us require http-user-agent / http-referrer per channel (#EXTVLCOPT)
+      // Pre-ee60990 ignored them -> 403. Inject them into the Tauri loader via context.headers.
+      const chHeaders = channelRef.current?.headers;
+      const LoaderClass = chHeaders
+        ? class extends TauriHlsLoader {
+            load(ctx: never, cfg: never, cb: never) {
+              (ctx as unknown as { headers?: Record<string, string> }).headers = {
+                ...chHeaders,
+                ...((ctx as unknown as { headers?: Record<string, string> }).headers ?? {}),
+              };
+              return super.load(ctx as never, cfg as never, cb as never);
+            }
+          }
+        : TauriHlsLoader;
       const hls = new Hls({
         maxBufferLength: 30,
         // WebView2 CSP is `script-src 'self'` (no blob:), which blocks hls.js's
@@ -408,7 +424,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         manifestLoadingTimeOut: CONNECT_TIMEOUT_MS,
         fragLoadingTimeOut: STALL_TIMEOUT_MS,
         // Use Tauri HTTP to bypass WebView CORS for Xtream HLS (no ACAO headers)
-        loader: TauriHlsLoader as unknown as typeof Hls.DefaultConfig.loader,
+        loader: LoaderClass as unknown as typeof Hls.DefaultConfig.loader,
         xhrSetup: undefined,
       });
       hlsRef.current = hls;
@@ -468,6 +484,19 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           totalSources: total,
           attempt: attemptRef.current,
         });
+        // Clear stall/connect timers to avoid races with retry (fix hang at 3/3)
+        if (stallTimerRef.current !== null) {
+          window.clearTimeout(stallTimerRef.current);
+          stallTimerRef.current = null;
+        }
+        if (connectTimerRef.current !== null) {
+          window.clearTimeout(connectTimerRef.current);
+          connectTimerRef.current = null;
+        }
+        if (retryTimerRef.current !== null) {
+          window.clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
         if (decision.kind === "retry") {
           attemptRef.current = decision.nextAttempt;
           setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
@@ -475,14 +504,52 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
           setError(null);
           retryTimerRef.current = window.setTimeout(() => {
             const cur = channelRef.current;
-            if (!cur) return;
+            const curV = videoRef.current;
+            if (!cur || !curV) return;
             const curSources = getSources(cur);
             const curUrl = curSources[sourceIndexRef.current];
-            if (!curUrl || curUrl !== url) return;
-            try {
-              hls.startLoad();
-            } catch {
-              hls.loadSource(curUrl);
+            if (!curUrl) return;
+            // For HLS fatal network errors (manifestLoadError) hls.startLoad() is a no-op
+            // which caused the player to stall forever at 3/3. Force a real reload.
+            const activeHls = hlsRef.current;
+            if (activeHls) {
+              try {
+                // loadSource re-fetches manifest and is the only reliable retry for HLS
+                activeHls.loadSource(curUrl);
+                return;
+              } catch {}
+              // Fallback: destroy and re-attach fresh instance
+              try {
+                activeHls.destroy();
+              } catch {}
+              hlsRef.current = null;
+              curV.removeAttribute("src");
+              curV.load();
+              if (curUrl.includes(".m3u8") || curUrl.includes("m3u8")) {
+                if (Hls.isSupported()) attachHls(curV, curUrl);
+                else {
+                  curV.src = curUrl;
+                  void curV.play().catch(() => {});
+                }
+              } else {
+                curV.src = curUrl;
+                void curV.play().catch(() => {});
+              }
+            } else {
+              // No active HLS: re-arm fresh
+              curV.removeAttribute("src");
+              curV.load();
+              if (curUrl.includes(".m3u8") || curUrl.includes("m3u8")) {
+                if (Hls.isSupported()) attachHls(curV, curUrl);
+                else {
+                  curV.src = curUrl;
+                  void curV.play().catch(() => {});
+                }
+              } else {
+                curV.src = curUrl;
+                void curV.play().catch(() => {});
+              }
+              applySpeed(curV, speedRef.current);
             }
           }, decision.delayMs);
         } else if (decision.kind === "switch-source") {
@@ -519,14 +586,65 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             }
           }, decision.delayMs);
         } else {
-          const nd = (data as { networkDetails?: { message?: string } }).networkDetails;
-          const ndMsg = nd?.message && !nd.message.includes("HTTP undefined") ? nd.message : undefined;
+          clearTimers();
+          // Surface the last HTTP code + attempted URLs to help diagnose Xtream/provider blocks
+          const nd = (data as { networkDetails?: { message?: string; status?: number } }).networkDetails as unknown as Response | undefined;
+          const httpCode = (data as { response?: { code?: number } }).response?.code ?? (nd as unknown as { status?: number })?.status;
+          const ndMsgRaw = (data as { networkDetails?: { message?: string } }).networkDetails as unknown as { message?: string } | undefined;
+          const ndMsg = ndMsgRaw?.message && !ndMsgRaw.message.includes("HTTP undefined") ? ndMsgRaw.message : undefined;
+          // Try HLS-native fallback as last resort: some Xtream panels serve raw TS even when .m3u8 403s —
+          // or CORS panel blocks m3u8 but TS is fetchable. Attempt direct video.src before hard-failing.
+          const curV = videoRef.current;
+          const lastUrl = sources[sourceIndexRef.current];
+          const isM3u8 = lastUrl?.includes(".m3u8") || lastUrl?.includes("m3u8");
+          const canTryNativeFallback = !!curV && isM3u8 && total === sources.length && httpCode && httpCode >= 400;
+          if (canTryNativeFallback && curV) {
+            console.warn(`[Player] HLS failed on all ${total} sources (last ${httpCode}). Trying native <video> fallback for ${lastUrl}`);
+            if (hlsRef.current) {
+              try { hlsRef.current.destroy(); } catch {}
+              hlsRef.current = null;
+            }
+            curV.removeAttribute("src");
+            curV.load();
+            setStatusWithStamp("buffering");
+            setError(`Trying native playback…`);
+            curV.src = lastUrl;
+            void curV.play().catch(() => {
+              setStatusWithStamp("error");
+              setError(`Stream error: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : httpCode ? ` — HTTP ${httpCode}` : ""}${total > 1 ? ` (all ${total} sources exhausted)` : ""} — check provider/server credentials or try VLC with same URL.`);
+            });
+            // If native also errors, the video.onerror handler (re-armed) will surface the final error.
+            // Attach a one-shot native error to guarantee we don't hang in buffering.
+            const onNativeFail = () => {
+              curV.removeEventListener("error", onNativeFail);
+              setStatusWithStamp("error");
+              setError(`Stream error: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : httpCode ? ` — HTTP ${httpCode}` : ""}${total > 1 ? ` (all ${total} sources exhausted)` : ""} — provider returned ${httpCode ?? "network error"} for ${ (()=>{try{return new URL(lastUrl).host}catch{return lastUrl}})() }. Verify username/password, max_connections, and that the line is active in provider panel.`);
+            };
+            curV.addEventListener("error", onNativeFail, { once: true });
+            return;
+          }
           setStatusWithStamp("error");
+          // Prefer explicit HTTP code when hls.js hides it as "networkError/manifestLoadError"
+          const codeHint = httpCode && httpCode !== 0 ? ` — HTTP ${httpCode}` : ndMsg ? ` — ${ndMsg}` : "";
+          const hostHint = (()=>{ try{ return lastUrl ? new URL(lastUrl).host : "" }catch{ return "" } })();
+          // Extra hint for mhiptv.info-style providers where port was omitted — pre-ee60990 required exact port.
+          const isTypoHost = hostHint.includes("frequancy");
+          const isAmagi = hostHint.includes("amagi.tv");
+          const portHint = isTypoHost
+            ? ` — URL has typo frequancy → frequency (auto-corrected), if still fails host may be offline.`
+            : isAmagi && httpCode === 403
+            ? ` — amagi.tv Samsung AU is geo-blocked outside AU (CloudFront 403). Try VLC in AU VPN or pick non-AU variant (US/EU).`
+            : hostHint && !hostHint.includes(":") && (hostHint === "mhiptv.info" || hostHint.includes("mhiptv"))
+            ? ` — check server URL includes port (e.g. http://mhiptv.info:8080 or :25461). Provider panel shows correct port.`
+            : hostHint.includes("frequency.stream") || hostHint.includes("linear-")
+            ? ` — frequency.stream linear channels often require exact Referer; now auto-handled, if 403 try VLC test: vlc "${lastUrl}"`
+            : total > 1 && httpCode === 403 ? ` — try re-entering server with http:// and correct port, or test URL in VLC.`
+            : httpCode === 403 ? ` — HTTP 403 usually means geo-block or expired token. Test in VLC: vlc "${lastUrl}" — if VLC also 403, stream is dead/geo-blocked.`
+            : "";
           setError(
-            `Stream error: ${data.type}/${data.details}${ndMsg ? ` — ${ndMsg}` : ""}${
-              total > 1 ? ` (all ${total} sources exhausted)` : ""
-            }`
+            `Stream error: ${data.type}/${data.details}${codeHint}${total > 1 ? ` (all ${total} sources exhausted)` : ""}${hostHint ? ` @ ${hostHint}` : ""}${portHint}`
           );
+          if (total > 1) console.error(`[Player] All ${total} sources failed. Tried:`, sources, `last details:`, data.details, `code:`, httpCode, `hint: re-enter server URL exactly as provider gave (with :port) or check max_connections/line status.`);
         }
       });
     },
@@ -617,6 +735,19 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             attempt: attemptRef.current,
           });
           if (decision.kind === "retry" || decision.kind === "switch-source") {
+            // Clear any pending retry before scheduling new one (avoid overlap hang at 3/3)
+            if (retryTimerRef.current !== null) {
+              window.clearTimeout(retryTimerRef.current);
+              retryTimerRef.current = null;
+            }
+            if (stallTimerRef.current !== null) {
+              window.clearTimeout(stallTimerRef.current);
+              stallTimerRef.current = null;
+            }
+            if (connectTimerRef.current !== null) {
+              window.clearTimeout(connectTimerRef.current);
+              connectTimerRef.current = null;
+            }
             setStatusWithStamp("reconnecting");
             // Reuse the same retry path as HLS error: just reload at current/next source
             if (decision.kind === "retry") {
@@ -631,6 +762,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
               retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
             }
           } else {
+            clearTimers();
             setStatusWithStamp("error");
             setError(`Stream stalled — all ${total} sources exhausted.`);
           }
@@ -640,6 +772,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
 
     const armConnect = () => {
       if (connectTimerRef.current !== null) window.clearTimeout(connectTimerRef.current);
+      if (retryTimerRef.current !== null) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       connectTimerRef.current = window.setTimeout(() => {
         const v = videoRef.current;
         const ch = channelRef.current;
@@ -652,6 +788,14 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             totalSources: total,
             attempt: attemptRef.current,
           });
+          if (retryTimerRef.current !== null) {
+            window.clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = null;
+          }
+          if (stallTimerRef.current !== null) {
+            window.clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = null;
+          }
           if (decision.kind === "retry") {
             attemptRef.current = decision.nextAttempt;
             setSourceMeta({ index: sourceIndexRef.current, total, attempt: attemptRef.current });
@@ -665,6 +809,7 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             setStatusWithStamp("reconnecting");
             retryTimerRef.current = window.setTimeout(() => loadAtSource(v, ch, sourceIndexRef.current), decision.delayMs);
           } else {
+            clearTimers();
             setStatusWithStamp("error");
             setError(`Connection timeout — all ${total} sources exhausted.`);
           }
@@ -758,6 +903,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             if (!cur || !curV) return;
             const curUrl = getSources(cur)[sourceIndexRef.current];
             if (!curUrl) return;
+            // Re-arm listeners for next attempt (previous were once:true and removed)
+            curV.addEventListener("loadeddata", onLoaded, { once: true });
+            curV.addEventListener("error", onErr, { once: true });
+            armConnect();
             curV.src = curUrl;
             void curV.play().catch(() => {});
             applySpeed(curV, speedRef.current);
@@ -773,6 +922,9 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
             const curV = videoRef.current;
             if (!cur || !curV) return;
             const nextUrl = getSources(cur)[decision.nextSourceIndex];
+            curV.addEventListener("loadeddata", onLoaded, { once: true });
+            curV.addEventListener("error", onErr, { once: true });
+            armConnect();
             curV.src = nextUrl;
             void curV.play().catch(() => {});
             applySpeed(curV, speedRef.current);
@@ -961,21 +1113,37 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
       {status === "reconnecting" && (
         <div className="player-overlay">
           <span className="inline-loader" aria-hidden />
-          {error ? error : `Reconnecting… (${sourceMeta.attempt}/${3})`}
+          {error ? error : `Reconnecting… (${sourceMeta.attempt}/${MAX_RETRIES})`}
           {sourceMeta.total > 1 && <span className="player-source"> SRC {sourceMeta.index + 1}/{sourceMeta.total}</span>}
         </div>
       )}
       {status === "error" && error && (
-        <div className="player-overlay player-error">
-          <span aria-hidden>!</span> {error}
-          <button
-            type="button"
-            className="player-retry"
-            onClick={retry}
-            aria-label="Retry playback"
-          >
-            Retry
-          </button>
+        <div className="player-overlay player-error" style={{ maxWidth: "92%", padding: "16px", textAlign: "left", overflowY: "auto", maxHeight: "85%" }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+            <span aria-hidden style={{ marginTop: "2px" }}>!</span>
+            <span style={{ flex: 1, wordBreak: "break-word" }}>{error}</span>
+          </div>
+          <div style={{ display: "flex", gap: "8px", marginTop: "12px", flexWrap: "wrap" }}>
+            <button type="button" className="player-retry" onClick={retry} aria-label="Retry playback">Retry</button>
+            <button type="button" className="player-retry" onClick={() => setShowDiag(v => !v)} aria-label="Toggle diagnostics" style={{ background: "#333" }}>{showDiag ? "Hide Details" : "Show Details"}</button>
+            <button type="button" className="player-retry" onClick={() => {
+              const diag = `Channel: ${channel.name}\nURL: ${channel.url}\nAlt: ${(channel.altUrls ?? []).join(" | ") || "none"}\nHeaders: ${channel.headers ? JSON.stringify(channel.headers) : "none"}\nSources tried: ${getSources(channel).join("\n")}\nSRC ${sourceMeta.index+1}/${sourceMeta.total} attempt ${sourceMeta.attempt}/${MAX_RETRIES}\nError: ${error}\nHint: Press F12 or Ctrl+Shift+I for DevTools (now unblocked), or test URL in VLC: vlc "${channel.url}"`;
+              navigator.clipboard?.writeText(diag).then(()=> alert("Diagnostics copied — paste here")).catch(()=> alert(diag));
+            }} aria-label="Copy diagnostics" style={{ background: "#444" }}>Copy Info</button>
+          </div>
+          {showDiag && (
+            <pre style={{ marginTop: "12px", background: "rgba(0,0,0,0.55)", padding: "10px", borderRadius: "6px", fontSize: "11px", lineHeight: "1.4", whiteSpace: "pre-wrap", wordBreak: "break-all", maxHeight: "260px", overflowY: "auto" }}>
+{`Channel: ${channel.name}
+URL: ${channel.url}
+AltUrls: ${(channel.altUrls ?? []).join("\n") || "—"}
+Headers: ${channel.headers ? JSON.stringify(channel.headers, null, 2) : "—"}
+Tried sources:
+${getSources(channel).map((u,i)=> ` ${i===sourceMeta.index ? "→" : " "} SRC ${i+1}: ${u}`).join("\n")}
+State: ${status} @ SRC ${sourceMeta.index+1}/${sourceMeta.total} attempt ${sourceMeta.attempt}/${MAX_RETRIES}
+Error: ${error}
+Tip: F12 now works (was blocked). Test in VLC: vlc "${channel.url}"`}
+            </pre>
+          )}
         </div>
       )}
     </div>

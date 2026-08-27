@@ -10,6 +10,7 @@ export interface Channel {
   tvgId?: string;
   kind?: ContentKind; // absent for M3U/live channels
   catchup?: { days: number; source: string } | null;
+  headers?: Record<string, string>; // e.g. http-user-agent / http-referrer from #EXTVLCOPT
 }
 
 export interface PlaylistSource {

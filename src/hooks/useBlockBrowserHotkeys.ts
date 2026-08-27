@@ -13,19 +13,19 @@ export function useBlockBrowserHotkeys(enabled = true) {
       const key = e.key;
       const lower = key.length === 1 ? key.toLowerCase() : key;
 
-      // F-keys: F1 help, F3 find, F5 reload, F7 caret, F12 devtools
+      // F-keys: F1 help, F3 find, F5 reload, F7 caret, F12 devtools — allow F12 for diagnostics (was blocking DevTools)
       if (
         key === "F1" ||
         key === "F3" ||
         key === "F5" ||
         key === "F7" ||
-        key === "F12" ||
         key === "F11"
       ) {
         e.preventDefault();
         e.stopPropagation();
         return;
       }
+      if (key === "F12") return; // allow DevTools
 
       const isMod = e.ctrlKey || e.metaKey;
 
@@ -33,10 +33,8 @@ export function useBlockBrowserHotkeys(enabled = true) {
         // allow copy/paste/select/undo/redo/cut
         if (["a", "c", "v", "x", "z", "y"].includes(lower)) return;
 
-        // Ctrl/Cmd + Shift + I/J/C (devtools)
+        // Ctrl/Cmd + Shift + I/J/C (devtools) — allow for diagnostics
         if (e.shiftKey && ["i", "j", "c"].includes(lower)) {
-          e.preventDefault();
-          e.stopPropagation();
           return;
         }
 
