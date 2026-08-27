@@ -13,6 +13,7 @@ import {
   STALL_TIMEOUT_MS,
   decideAfterFailure,
 } from "../lib/streamPolicy";
+import { TauriHlsLoader } from "../lib/hlsTauriLoader";
 import { zapNeighbors, zapStep } from "../lib/zap";
 import { ZapOverlay } from "./player/ZapOverlay";
 import type { EpgProgramme } from "../types/epg";
@@ -400,6 +401,10 @@ export function Player({ channel, fitMode: fitModeProp, onBack, profileId = null
         enableWorker: true,
         manifestLoadingTimeOut: CONNECT_TIMEOUT_MS,
         fragLoadingTimeOut: STALL_TIMEOUT_MS,
+        // Use Tauri HTTP to bypass WebView CORS for Xtream HLS (no ACAO headers)
+        loader: TauriHlsLoader as unknown as typeof Hls.DefaultConfig.loader,
+        // also enable fetch-based loader fallback timeouts
+        xhrSetup: undefined,
       });
       hlsRef.current = hls;
       hls.loadSource(url);
