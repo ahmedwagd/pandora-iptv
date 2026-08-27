@@ -30,6 +30,6 @@ export function coerceHlsMasterToSingleChannel(
 
 export function parseM3UWithHlsGuard(content: string, url: string, label?: string): Channel[] {
   if (!isHlsMasterPlaylist(content)) return parseM3U(content);
-  let parsed = parseM3U(content);
+  const parsed = parseM3U(content);
   return coerceHlsMasterToSingleChannel(parsed, url, label);
 }

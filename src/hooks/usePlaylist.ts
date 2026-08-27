@@ -74,7 +74,7 @@ export function usePlaylist() {
         const res = await tauriFetch(url, { method: "GET" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
-        let parsed = isHlsMasterPlaylist(text)
+        const parsed = isHlsMasterPlaylist(text)
           ? coerceHlsMasterToSingleChannel(parseM3U(text), url, label)
           : parseM3U(text);
         if (parsed.length === 0) throw new Error("No channels found — check the playlist URL.");
