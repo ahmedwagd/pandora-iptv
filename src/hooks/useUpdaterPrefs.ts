@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getValue, setValue } from "../lib/store";
+import { deleteValue, getValue, setValue } from "../lib/store";
 import { StorageKeys } from "../lib/storageKeys";
 
 export const DEFAULT_AUTO_CHECK = true;
@@ -61,19 +61,19 @@ export function useUpdaterPrefs() {
 
   const setDismissedVersion = useCallback((v: string | null) => {
     setDismissedVersionState(v);
-    if (v === null) void setValue(StorageKeys.updaterDismissedVersion, null);
+    if (v === null) void deleteValue(StorageKeys.updaterDismissedVersion);
     else void setValue(StorageKeys.updaterDismissedVersion, v);
   }, []);
 
   const setStagedVersion = useCallback((v: string | null) => {
     setStagedVersionState(v);
-    if (v === null) void setValue(StorageKeys.updaterStagedVersion, null);
+    if (v === null) void deleteValue(StorageKeys.updaterStagedVersion);
     else void setValue(StorageKeys.updaterStagedVersion, v);
   }, []);
 
   const clearStagedVersion = useCallback(() => {
     setStagedVersionState(null);
-    void setValue(StorageKeys.updaterStagedVersion, null);
+    void deleteValue(StorageKeys.updaterStagedVersion);
   }, []);
 
   return {

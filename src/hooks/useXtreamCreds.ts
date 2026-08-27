@@ -30,9 +30,10 @@ export function useXtreamCreds(profileId: string | null = null) {
             setCreds(parsed);
             setReady(true);
             // Keep store as backup for recovery if keyring later fails
+            // Always mirror to unscoped global for cross-profile recovery after Store reset
             try {
               await setValue(key, parsed);
-              if (profileId === "default") await setValue(StorageKeys.xtreamCreds, parsed);
+              await setValue(StorageKeys.xtreamCreds, parsed);
             } catch {}
             return;
           }
@@ -44,12 +45,61 @@ export function useXtreamCreds(profileId: string | null = null) {
         saved = await getValue<XtreamCreds>(StorageKeys.xtreamCreds);
         if (saved) await setValue(key, saved);
       }
+      // Robust cross-profile recovery: if still no creds, try any available source
+      // This handles Store reset after update where old profile id is lost but creds exist
+      // under previous profile's scoped key or unscoped keyring/localStorage.
+      if (!saved) {
+        // Try keyring for default account (covers null -> default mapping)
+        try {
+          const fallbackSecure = profileId !== null ? await getSecure(null) : null;
+          if (fallbackSecure) {
+            const parsed = JSON.parse(fallbackSecure) as XtreamCreds;
+            saved = parsed;
+            if (parsed) await setValue(key, parsed);
+          }
+        } catch {}
+      }
+      if (!saved) {
+        try {
+          const unscoped = await getValue<XtreamCreds>(StorageKeys.xtreamCreds);
+          if (unscoped) {
+            saved = unscoped;
+            await setValue(key, saved);
+          }
+        } catch {}
+      }
+      if (!saved) {
+        // Last resort: enumerate localStorage for any Xtream creds (survives Store file loss)
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (!k) continue;
+            if (k === StorageKeys.xtreamCreds || k.startsWith(`${StorageKeys.xtreamCreds}:`)) {
+              const raw = localStorage.getItem(k);
+              if (!raw) continue;
+              try {
+                const parsed = JSON.parse(raw) as XtreamCreds;
+                if (parsed?.server && parsed?.username && parsed?.password) {
+                  saved = parsed;
+                  await setValue(key, saved);
+                  await setValue(StorageKeys.xtreamCreds, saved);
+                  break;
+                }
+              } catch {}
+            }
+          }
+        } catch {}
+      }
       // Migrate legacy plaintext -> keychain (keep store as backup for robustness)
       if (saved) {
         try {
           await saveSecure(profileId, JSON.stringify(saved));
         } catch {}
         // Keep store as backup; do not delete
+        // Ensure unscoped global backup exists for future profile resets
+        try {
+          await setValue(StorageKeys.xtreamCreds, saved);
+        } catch {}
       }
       if (!cancelled) {
         setCreds(saved ?? null);
@@ -67,21 +117,28 @@ export function useXtreamCreds(profileId: string | null = null) {
       const json = JSON.stringify(c);
       try {
         const ok = await saveSecure(profileId, json);
+        // Always keep global backups for cross-profile recovery after Store reset
+        // Best-effort: also write to default/global keyring account
+        try {
+          if (profileId !== null && profileId !== "default") {
+            await saveSecure(null, json);
+          } else if (profileId === null) {
+            // also ensure scoped default has it if we saved via null
+            await saveSecure("default", json);
+          }
+        } catch {}
         if (!ok) {
           await setValue(key, c);
-          if (profileId === "default") await setValue(StorageKeys.xtreamCreds, c);
+          await setValue(StorageKeys.xtreamCreds, c);
         } else {
           // Keep store as backup for recovery if keyring becomes unavailable;
-          // still remove plaintext fallback after successful secure save to avoid duplication,
-          // but ensure next launch can recover from store if keyring fails.
-          // For now keep backup: also save to store as fallback (commented delete).
-          // void deleteValue will be handled on next successful secure read.
+          // Always keep unscoped global backup so Store reset can recover.
           await setValue(key, c);
-          if (profileId === "default") await setValue(StorageKeys.xtreamCreds, c);
+          await setValue(StorageKeys.xtreamCreds, c);
         }
       } catch {
         await setValue(key, c);
-        if (profileId === "default") await setValue(StorageKeys.xtreamCreds, c);
+        await setValue(StorageKeys.xtreamCreds, c);
       }
     },
     [key, profileId]
